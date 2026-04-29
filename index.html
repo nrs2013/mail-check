@@ -533,7 +533,7 @@
   async function loadAttachmentIds() {
     const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
     try {
-      const q = "(to:" + ME + " OR cc:" + ME + ") has:attachment newer_than:10d" + unreadFilter;
+      const q = "(to:" + ME + " OR cc:" + ME + ") has:attachment " + getCutoffGmailQuery() + unreadFilter;
       const r = await fetchPages(q, 2, null);
       (r.threads || []).forEach(t => state.attachmentIds.add(t.id));
     } catch(e) {}
@@ -601,13 +601,27 @@
     return msgs.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))[msgs.length - 1];
   }
 
-  // 10日以内かどうかチェック（クライアント側の念押しフィルタ）
-  const TEN_DAYS_MS = 10 * 86400000;
+  // 「10日前の0時」を1度だけ計算して固定する（Mac間で揃えるため）
+  // newer_than:10d だと検索した瞬間で境目が動くので、日付スナップに変更
+  function getCutoffDate() {
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10, 0, 0, 0, 0);
+    return cutoff;
+  }
+  function getCutoffGmailQuery() {
+    const c = getCutoffDate();
+    const y = c.getFullYear();
+    const m = String(c.getMonth() + 1).padStart(2, "0");
+    const d = String(c.getDate()).padStart(2, "0");
+    return "after:" + y + "/" + m + "/" + d;
+  }
+  // 10日以内かどうかチェック（クライアント側の念押しフィルタ／カットオフは固定日）
   function isWithin10Days(thread) {
     const last = lastMessageOf(thread);
     if (!last.date) return false;
-    const diff = Date.now() - new Date(last.date).getTime();
-    return diff >= 0 && diff <= TEN_DAYS_MS;
+    const cutoffMs = getCutoffDate().getTime();
+    const t = new Date(last.date).getTime();
+    return t >= cutoffMs;
   }
 
   // 本文冒頭に「野村」が出てくるメールを判定
@@ -1823,7 +1837,7 @@
 
   async function refresh() {
     const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
-    const dateFilter = " newer_than:10d"; // 過去10日間に絞る
+    const dateFilter = " " + getCutoffGmailQuery(); // 10日前の0時から（境目を日付スナップ）
     const toQuery = "to:" + ME + dateFilter + unreadFilter;
     const ccQuery = "cc:" + ME + dateFilter + unreadFilter;
 
