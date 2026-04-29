@@ -97,26 +97,11 @@
   }
   .grid > .col-head + .col-head, .grid > .col-head:not(:first-child) { border-left: 1px solid var(--border); }
   .grid > .col-head.priority {
-    background: linear-gradient(180deg, rgba(212, 146, 90, 0.20), rgba(212, 146, 90, 0.06));
-    border-bottom: 2px solid var(--accent);
-    position: relative;
+    background: transparent;
+    border-bottom: 1px solid var(--accent);
   }
-  .grid > .col-head.priority::before {
-    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
-    width: 3px; background: var(--accent);
-  }
-  .col-head.priority .col-title {
-    color: var(--accent); font-size: 13px; letter-spacing: 0.08em; font-weight: 700;
-  }
-  .col-head.priority .col-title .ico {
-    fill: var(--accent); stroke: var(--accent); opacity: 1;
-    filter: drop-shadow(0 0 4px rgba(212, 146, 90, 0.5));
-  }
-  .col-head.priority .col-count {
-    color: var(--accent); font-weight: 700;
-    background: rgba(212, 146, 90, 0.18); padding: 2px 9px;
-    border-radius: 10px; border: 1px solid rgba(212, 146, 90, 0.4);
-  }
+  .col-head.priority .col-title { color: var(--accent); }
+  .col-head.priority .col-count { color: var(--accent); }
   .grid > .col-head.nrs { background: transparent; }
   .col-head.nrs .col-title { color: var(--text-2); }
   .col-head.nrs .col-count { color: var(--text-3); }
