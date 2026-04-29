@@ -1092,6 +1092,46 @@
   // 1. アドレス帳に保存済み（手動 > AI抽出）→ それを使う
   // 2. From に表示名（Name <email>形式）→ そのまま使う
   // 3. ピュアなメアドのみ → ドメイン辞書 → 「ローカル @ ドメイン/組織」
+  // 単一の sender 文字列から日本語フレンドリーな表示名を返す（モーダル用）
+  function senderNameJa(senderRaw) {
+    if (!senderRaw) return "(不明)";
+    const sender = decodeMimeWord(senderRaw);
+    const email = senderEmail(sender);
+
+    // 1. アドレス帳ヒット
+    const stored = getSenderName(email);
+    if (stored && stored.length > 0) {
+      const domain = senderDomain(sender);
+      const org = lookupOrgName(domain);
+      if (org && !stored.includes(org) && !stored.includes("@")) {
+        return stored + " · " + org;
+      }
+      return stored;
+    }
+
+    // 2. "Display Name <email>" 形式
+    const m = sender.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) {
+      const name = m[1].trim();
+      if (name) return name;
+    }
+
+    // 3. メアドのみ → ドメイン辞書
+    if (!sender.includes("@")) return sender;
+    const at = sender.lastIndexOf("@");
+    const local = sender.slice(0, at);
+    const domain = sender.slice(at + 1).toLowerCase();
+    const org = lookupOrgName(domain);
+    if (org) {
+      if (/^(noreply|no-reply|donotreply|do-not-reply|info|news|notice|notify|alert|update|order|shipment|delivery|tracking|payment|billing|admin|customer|member|press|marketing|store|support|service|help|auto-confirm|order-update|shipment-tracking|magazine|newsletter|mailer|reservation|booking|confirmation|receipt|webmaster|account|hello|system|posts-recaps|event)/i.test(local)) {
+        return org;
+      }
+      return local + " @ " + org;
+    }
+    if (personalDomains.has(domain)) return sender;
+    return local + " @ " + domain;
+  }
+
   function displayNameOf(thread) {
     const last = (thread.messages || [])[(thread.messages || []).length - 1] || {};
     const sender = decodeMimeWord(last.sender || "");
@@ -1311,7 +1351,7 @@
       // 本文表示
       const html = messages.map(msg => {
         return '<div class="msg-block">' +
-          '<div class="msg-head"><span class="msg-from">' + escapeHtml(senderName(msg.sender)) + '</span> <span class="msg-email">&lt;' + escapeHtml(senderEmail(msg.sender)) + '&gt;</span><br><span class="msg-date">' + escapeHtml(fmtFullDate(msg.date)) + '</span></div>' +
+          '<div class="msg-head"><span class="msg-from">' + escapeHtml(senderNameJa(msg.sender)) + '</span> <span class="msg-email">&lt;' + escapeHtml(senderEmail(msg.sender)) + '&gt;</span><br><span class="msg-date">' + escapeHtml(fmtFullDate(msg.date)) + '</span></div>' +
           renderRecipients("To", msg.toRecipients) +
           renderRecipients("Cc", msg.ccRecipients) +
           '<div class="msg-body">' + cleanBodyText(msg.plaintextBody || msg.body || msg.snippet || "") + '</div>' +
