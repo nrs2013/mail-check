@@ -624,16 +624,16 @@
     return t >= cutoffMs;
   }
 
-  // 本文冒頭に「野村」が出てくるメールを判定
+  // 本文冒頭に「野村」が出てくるメールを判定（先頭限定で誤検知を防ぐ）
+  // 例：「野村様」「野村さん」始まりはMATCH／「Amazon.co.jp 野村裕紀 様」始まりはNOT MATCH
   function startsWithNomura(thread) {
     const msgs = thread.messages || [];
     const last = msgs[msgs.length - 1] || {};
     let snippet = (last.snippet || "").replace(/<[^>]+>/g, "").trim();
     if (!snippet) return false;
-    const head = snippet.slice(0, 120);
-    // 「野村」+ 敬称・名前パターン
-    return /野村(様|さん|さま|殿|くん|君|氏|裕紀|ヒロノリ|ひろのり|ヒロ|宛|御中|チーム|プロデューサー|演出)/u.test(head)
-        || /^[\s　【\[「『]*野村[\s　,、]/u.test(head);
+    // 先頭の空白/括弧類を許容したうえで「野村+敬称」または「野村+区切り」
+    return /^[\s　【\[「『]*野村(様|さん|さま|殿|くん|君|氏|裕紀|ヒロノリ|ひろのり|ヒロ|宛|御中|チーム|プロデューサー|演出)/u.test(snippet)
+        || /^[\s　【\[「『]*野村[\s　,、:：]/u.test(snippet);
   }
 
   document.getElementById("filter-" + currentFilter).classList.add("active");
