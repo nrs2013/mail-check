@@ -1,0 +1,1887 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Mail Triage Dashboard",
+  "schemaVersion": 1,
+  "description": "のむさん用：To自分/CC自分の未読メールを一覧表示するダッシュボード。Gmail検索で取得、クリックでGmailで開く",
+  "mcpTools": [
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads",
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__get_thread",
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__create_draft"
+  ],
+  "mcpServerNames": [
+    "Gmail",
+    "Gmail",
+    "Gmail"
+  ]
+}
+</script>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Inbox Triage</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #1c1c1c;          /* ニュートラルなダークグレー */
+    --bg-elev: #242424;     /* カード背景 */
+    --bg-hover: #2e2e2e;    /* ホバー */
+    --border: #3a3a3a;      /* ボーダー */
+    --border-strong: #525252;
+    --text: #f5f5f5;        /* ニュートラルな白 */
+    --text-2: #c0c0c0;      /* セカンダリ */
+    --text-3: #888888;      /* ターシャリ */
+    --reply: #d4a52a;       /* 強調：黄 */
+    --info: #c99b2c;
+    --ad: #5a5a5a;          /* 広告：ニュートラルグレー */
+    --accent: #d4a52a;      /* メインアクセント：黄色（ここだけ黄） */
+    --today: #e8b84b;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+    color: var(--text); margin: 0; padding: 24px 28px;
+    font-size: 13px; line-height: 1.5; letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-icon {
+    width: 28px; height: 28px; border-radius: 7px; background: var(--accent);
+    display: flex; align-items: center; justify-content: center; color: #1c1b18;
+  }
+  .brand-name { font-size: 14px; font-weight: 600; letter-spacing: -0.02em; }
+  .brand-sub { font-size: 11px; color: var(--text-3); margin-left: 4px; }
+
+  .filterbar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .pill-group {
+    display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 8px; padding: 3px;
+  }
+  .pill {
+    background: transparent; border: 0; padding: 5px 12px; font-size: 12px;
+    border-radius: 6px; cursor: pointer; color: var(--text-2);
+    font-family: inherit; transition: all .15s; font-weight: 500;
+  }
+  .pill:hover { color: var(--text); }
+  .pill.active { background: var(--bg-hover); color: var(--text); box-shadow: 0 0 0 1px var(--border-strong); }
+  .check {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12px;
+    color: var(--text-2); cursor: pointer; user-select: none; padding: 6px 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev);
+  }
+  .check input { margin: 0; accent-color: var(--text); }
+  .stats { color: var(--text-3); font-size: 11px; margin-left: auto; font-feature-settings: "tnum"; }
+  .stats strong { color: var(--text); font-weight: 600; }
+
+  /* === 日付揃えグリッド === */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  /* カラムヘッダ（最上段、グリッドの3カラム上に固定） */
+  .grid > .col-head {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--bg-elev); border-bottom: 1px solid var(--border);
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .grid > .col-head + .col-head, .grid > .col-head:not(:first-child) { border-left: 1px solid var(--border); }
+  .grid > .col-head.priority {
+    background: transparent;
+    border-bottom: 1px solid var(--accent);
+  }
+  .col-head.priority .col-title { color: var(--accent); }
+  .col-head.priority .col-count { color: var(--accent); }
+  .grid > .col-head.nrs { background: transparent; }
+  .col-head.nrs .col-title { color: var(--text-2); }
+  .col-head.nrs .col-count { color: var(--text-3); }
+  .cell.nrs { background: transparent; }
+  .col-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
+  .col-title .ico { width: 14px; height: 14px; opacity: .7; }
+  .col-head.priority .col-title { color: var(--reply); }
+  .col-count { font-size: 11px; color: var(--text-3); font-feature-settings: "tnum"; }
+  .col-head.priority .col-count { color: var(--reply); }
+
+  /* 日付見出し行（3カラム横断） */
+  .date-row {
+    grid-column: 1 / -1;
+    padding: 14px 16px 8px; margin-top: 8px;
+    border-top: 1px dashed var(--border-strong);
+    display: flex; align-items: baseline; gap: 12px;
+    background: var(--bg);
+    position: sticky; top: 47px; z-index: 4;
+  }
+  .date-row:first-of-type { margin-top: 0; border-top: 0; }
+  .date-row .date-label { font-size: 14px; font-weight: 700; color: var(--text); }
+  .date-row.today .date-label { color: var(--today, #60a5fa); }
+  .date-row.yesterday .date-label { color: #a78bfa; }
+  .date-row .date-meta { font-size: 11px; color: var(--text-3); }
+
+  /* 日付内のセル（3カラム） */
+  .cell {
+    padding: 6px 4px; border-left: 1px solid var(--border);
+    min-height: 20px;
+  }
+  .cell:first-child { border-left: 0; }
+  .cell.priority { background: transparent; }
+  .cell.empty-cell { color: var(--text-3); font-size: 11px; padding: 12px 8px; text-align: center; opacity: 0.4; }
+  .item {
+    padding: 10px 12px; border-radius: 7px; margin-bottom: 4px;
+    cursor: pointer; transition: background .12s;
+    position: relative; border: 1px solid transparent;
+  }
+  .item:hover { background: var(--bg-hover); border-color: var(--border); }
+  .item:last-child { margin-bottom: 0; }
+  .item.kind-ad { opacity: .35; }
+  .item.kind-ad:hover { opacity: .55; }
+
+  .row1 {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 4px;
+  }
+  .row1-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .dot { display: none; }
+  .sender {
+    font-weight: 600; font-size: 13px; color: #d6b870;  /* 暖色系の薄い金 */
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+  .date {
+    font-size: 11px; color: var(--text-3); flex-shrink: 0;
+    font-feature-settings: "tnum";
+  }
+  .subject {
+    font-size: 13px; color: #9bb8d8;  /* 落ち着いた青系 */
+    margin-left: 14px; margin-bottom: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 500;
+  }
+  .summary {
+    font-size: 12.5px; color: var(--text); margin-left: 14px;
+    line-height: 1.6; letter-spacing: -0.005em;
+    background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 6px;
+    border-left: 2px solid var(--border-strong);
+    word-break: break-word;
+  }
+  .summary.long {
+    font-size: 13px; color: var(--text);
+    background: transparent; border-left: 3px solid var(--accent);
+    line-height: 1.7;
+    padding-left: 12px;
+  }
+  .summary.snippet-3line {
+    color: var(--text-2); font-size: 12px; line-height: 1.55;
+    background: transparent; border-left: 0; padding: 0; margin-left: 14px;
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .summary.placeholder { color: var(--text-3); font-style: italic; background: transparent; border-left: 0; padding: 0; }
+  .badge {
+    display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    background: var(--bg-hover); color: var(--text-2); margin-left: 6px;
+    border: 1px solid var(--border); font-weight: 500;
+    font-feature-settings: "tnum";
+  }
+  .att-icon {
+    display: inline-block; font-size: 11px; margin-left: 4px;
+    color: var(--text-2); opacity: 0.7;
+  }
+  .file-links {
+    margin-top: 6px; margin-left: 14px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .file-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #6ba6ff; text-decoration: none;
+    padding: 4px 8px; background: rgba(107,166,255,0.08);
+    border-radius: 4px; word-break: break-all; line-height: 1.4;
+    border: 1px solid rgba(107,166,255,0.15);
+  }
+  .file-link:hover {
+    background: rgba(107,166,255,0.15);
+    border-color: rgba(107,166,255,0.3);
+    color: #8ab8ff;
+  }
+  .file-link .fl-icon { flex-shrink: 0; font-size: 13px; }
+  .file-link .fl-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att-inline {
+    margin-top: 8px; margin-left: 14px;
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+  .att-inline.loading {
+    color: var(--text-3); font-size: 11px; font-style: italic;
+    margin-left: 14px; padding: 4px 0;
+  }
+  .att-chip-inline {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 9px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 5px;
+    font-size: 11.5px; color: var(--text); text-decoration: none;
+    max-width: 100%; transition: all .12s;
+  }
+  .att-chip-inline:hover {
+    background: var(--bg-hover); border-color: var(--accent);
+    color: var(--accent);
+  }
+  .att-chip-inline .att-chip-icon { font-size: 13px; flex-shrink: 0; }
+  .att-chip-inline .att-chip-name {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 160px;
+  }
+  .cell { min-width: 0; overflow: hidden; }
+  .cell .item { min-width: 0; }
+  .cell .subject, .cell .summary, .cell .sender { min-width: 0; }
+  .edit-name-btn {
+    display: inline-block; opacity: 0; transition: opacity .12s;
+    margin-left: 4px; padding: 0 4px; font-size: 10px; color: var(--text-3);
+    background: transparent; border: 0; cursor: pointer; line-height: 1;
+  }
+  .item:hover .edit-name-btn { opacity: 0.6; }
+  .edit-name-btn:hover { opacity: 1 !important; color: var(--accent); }
+  .name-edit-popover {
+    position: fixed; background: var(--bg-elev); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 200; min-width: 280px;
+  }
+  .name-edit-popover .label { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
+  .name-edit-popover .email-display {
+    font-size: 11px; color: var(--text-2); margin-bottom: 10px; padding: 4px 8px;
+    background: var(--bg); border-radius: 5px; font-family: monospace;
+    word-break: break-all;
+  }
+  .name-edit-popover input {
+    width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; font-size: 13px; font-family: inherit; outline: none;
+    margin-bottom: 10px;
+  }
+  .name-edit-popover input:focus { border-color: var(--accent); }
+  .name-edit-popover .actions { display: flex; gap: 6px; }
+  .name-edit-popover .actions button {
+    padding: 6px 12px; border-radius: 5px; font-size: 12px; cursor: pointer;
+    font-family: inherit; font-weight: 500; border: 1px solid var(--border);
+  }
+  .name-edit-popover .save-btn { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .name-edit-popover .cancel-btn { background: transparent; color: var(--text-2); }
+  .name-edit-popover .reset-btn { background: transparent; color: var(--text-3); margin-left: auto; font-size: 11px; }
+
+  .empty, .loading-text {
+    padding: 32px 20px; text-align: center; color: var(--text-3); font-size: 12px;
+  }
+  .more-btn {
+    display: block; width: 100%; padding: 12px; border: 0; background: transparent;
+    color: var(--text-2); font-size: 12px; cursor: pointer; border-top: 1px solid var(--border);
+    transition: background .12s; font-family: inherit; font-weight: 500;
+  }
+  .more-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .more-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .error {
+    padding: 14px; background: rgba(184,128,31,.10); color: var(--reply);
+    border-radius: 8px; font-size: 12px; border: 1px solid rgba(184,128,31,.25);
+  }
+
+  .list::-webkit-scrollbar { width: 6px; }
+  .list::-webkit-scrollbar-track { background: transparent; }
+  .list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+  .list::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+  /* モーダル */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(15,14,12,0.7); backdrop-filter: blur(4px); z-index: 100;
+    display: none; justify-content: center; align-items: flex-start; padding: 40px 20px;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: 12px;
+    width: 100%; max-width: 720px; max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .modal-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
+  #toast-area:not(:empty) { padding: 8px 18px 0; }
+  .close-btn {
+    background: transparent; border: 0; color: var(--text-2); font-size: 22px; cursor: pointer;
+    padding: 0 8px; line-height: 1; transition: color .12s;
+  }
+  .close-btn:hover { color: var(--text); }
+  .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
+  .msg-block { border-bottom: 1px solid var(--border); padding: 14px 0 18px; }
+  .msg-block:last-child { border-bottom: 0; }
+  .msg-head { font-size: 11px; color: var(--text-3); margin-bottom: 6px; line-height: 1.6; word-break: break-all; }
+  .msg-from { color: var(--text); font-weight: 600; font-size: 13px; }
+  .msg-email { color: var(--text-3); }
+  .msg-date { color: var(--text-3); font-size: 11px; }
+  .recip-details { font-size: 11px; color: var(--text-3); margin-bottom: 6px; line-height: 1.6; }
+  .recip-details summary { cursor: pointer; list-style: none; word-break: break-all; }
+  .recip-details summary::-webkit-details-marker { display: none; }
+  .recip-label { color: var(--text-2); font-weight: 600; margin-right: 4px; }
+  .recip-visible { color: var(--text-3); }
+  .recip-more { color: var(--accent); font-weight: 500; cursor: pointer; }
+  .recip-more:hover { text-decoration: underline; }
+  .recip-rest {
+    margin-top: 6px; padding: 8px 10px; background: var(--bg);
+    border-radius: 5px; word-break: break-all; color: var(--text-3); line-height: 1.6;
+  }
+  .msg-body {
+    font-size: 13.5px; color: var(--text); white-space: pre-wrap; word-break: break-word;
+    background: var(--bg); padding: 16px 18px; border-radius: 8px; line-height: 1.85;
+    max-height: 420px; overflow-y: auto;
+    border: 1px solid var(--border);
+    margin-top: 10px;
+    letter-spacing: 0.01em;
+  }
+  .modal-head-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  #toast-area { padding: 0 18px; }
+  #attachments-area:not(:empty) {
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.025);
+  }
+  .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .attachment-list .label-row {
+    width: 100%; font-size: 11px; color: var(--text-3); margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .att-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; font-size: 12px; color: var(--text);
+    max-width: 280px;
+  }
+  .att-chip .att-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .att-chip .att-size { font-size: 10px; color: var(--text-3); flex-shrink: 0; }
+  .act-btn {
+    background: var(--bg-hover); color: var(--text-2); border: 1px solid var(--border);
+    padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    transition: all .12s; text-decoration: none; display: inline-block;
+    font-family: inherit; font-weight: 500;
+  }
+  .act-btn:hover { background: var(--border-strong); color: var(--text); }
+  .act-btn.primary { background: var(--accent); color: #1c1b18 !important; border-color: var(--accent); font-weight: 600; }
+  .act-btn.primary:hover { background: #e8b84b; border-color: #e8b84b; }
+  .act-btn.success { background: #5C9A6F; color: #FFFFFF !important; border-color: #5C9A6F; font-weight: 600; }
+  .act-btn.success:hover { background: #4A8259; }
+  .toast { padding: 8px 12px; background: rgba(92,154,111,.10); color: #4A8259; border-radius: 6px; font-size: 12px; margin-bottom: 8px; }
+  .toast.error { background: rgba(184,128,31,.14); color: var(--reply); }
+  .hint { font-size: 11px; color: var(--text-3); margin-top: 8px; }
+  .date-divider {
+    font-size: 10px; color: var(--text-3); font-weight: 600;
+    padding: 14px 4px 6px; margin-top: 6px;
+    border-bottom: 1px solid var(--border); letter-spacing: 0.06em;
+    text-transform: uppercase; position: sticky; top: 0;
+    background: var(--bg); z-index: 1;
+  }
+  .date-divider:first-child { padding-top: 4px; margin-top: 0; }
+  .date-divider .day-count { color: var(--text-3); font-weight: 400; margin-left: 6px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-6l-2 3h-4l-2-3H2"/>
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+        </svg>
+      </div>
+      <span class="brand-name">Inbox Triage</span>
+      <span class="brand-sub">nomura@nrs1.jp</span>
+    </div>
+  </div>
+
+  <div class="filterbar">
+    <div class="pill-group">
+      <button class="pill active" id="filter-unread">未読</button>
+      <button class="pill" id="filter-all">全件</button>
+    </div>
+    <label class="check">
+      <input type="checkbox" id="hide-ads" checked />
+      <span>広告を隠す</span>
+    </label>
+    <div class="stats" id="stats">読み込み中…</div>
+  </div>
+
+  <div class="grid" id="mail-grid">
+    <div class="col-head priority">
+      <div class="col-title">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        野村宛
+      </div>
+      <div class="col-count" id="count-nomura">—</div>
+    </div>
+    <div class="col-head">
+      <div class="col-title">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        To 自分
+      </div>
+      <div class="col-count" id="count-to">—</div>
+    </div>
+    <div class="col-head">
+      <div class="col-title">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Cc 自分
+      </div>
+      <div class="col-count" id="count-cc">—</div>
+    </div>
+    <div class="col-head nrs">
+      <div class="col-title">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
+        </svg>
+        NRSから
+      </div>
+      <div class="col-count" id="count-nrs">—</div>
+    </div>
+    <div class="loading-text" style="grid-column: 1/-1; padding: 40px;">読み込み中…</div>
+  </div>
+
+  <div class="modal-bg" id="modal-bg">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="modal-title">読み込み中…</div>
+        <div class="modal-head-actions">
+          <a class="act-btn primary" id="mail-reply-sender" href="#" title="送信者のみに返信">↩ 送信者へ</a>
+          <a class="act-btn" id="mail-reply-all" href="#" title="To/Cc全員に返信">↩↩ 全員へ</a>
+          <a class="act-btn" id="mail-forward" href="#" title="転送">→ 転送</a>
+          <button class="act-btn" id="copy-mailto-btn" title="送信者のアドレスをコピー">📋</button>
+          <a class="act-btn" id="open-gmail-link" href="#" target="_blank" rel="noopener" title="Gmailでスレッドを開く">Gmail</a>
+          <button class="close-btn" id="close-btn">×</button>
+        </div>
+      </div>
+      <div id="toast-area"></div>
+      <div id="attachments-area"></div>
+      <div class="modal-body" id="modal-body"><div class="loading-text">読み込み中…</div></div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const SEARCH_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads";
+  const GET_THREAD_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__get_thread";
+  const CREATE_DRAFT_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__create_draft";
+  const STORE_KEY = "mailDashFilter_v3";
+  const HIDE_KEY = "mailDashHideAds_v5";
+  const KIND_CACHE_KEY = "mailDashKindCache_v16";
+  const SENDER_NAME_KEY = "mailDashSenderNames_v1";
+  let senderNameMap = {};
+  try { senderNameMap = JSON.parse(localStorage.getItem(SENDER_NAME_KEY) || "{}"); } catch(e) {}
+
+  // 完全URLキャッシュ（get_threadで取得した本文から抽出した完全リンク）
+  const FILE_LINKS_CACHE_KEY = "mailDashFileLinks_v1";
+  let fileLinksCache = {};
+  try { fileLinksCache = JSON.parse(localStorage.getItem(FILE_LINKS_CACHE_KEY) || "{}"); } catch(e) {}
+  function saveSenderName(email, name, source) {
+    if (!email) return;
+    senderNameMap[email.toLowerCase()] = { name, source, ts: Date.now() };
+    localStorage.setItem(SENDER_NAME_KEY, JSON.stringify(senderNameMap));
+  }
+  function getSenderName(email) {
+    const e = (email || "").toLowerCase();
+    return senderNameMap[e] ? senderNameMap[e].name : null;
+  }
+  function getSenderSource(email) {
+    const e = (email || "").toLowerCase();
+    return senderNameMap[e] ? senderNameMap[e].source : null;
+  }
+  const ME = "nomura@nrs1.jp";
+  const INITIAL_PAGES = 2;
+  const MORE_PAGES = 4;
+
+  let currentFilter = localStorage.getItem(STORE_KEY) || "unread";
+  let hideAds = localStorage.getItem(HIDE_KEY) !== "0";
+  let kindCache = {};
+  try { kindCache = JSON.parse(localStorage.getItem(KIND_CACHE_KEY) || "{}"); } catch(e) {}
+
+  const state = {
+    nomura: { threads: [], count: null },
+    nrs: { threads: [], count: null },
+    to: { threads: [], nextToken: null, query: "", btn: null, count: null, exactCheck: "to" },
+    cc: { threads: [], nextToken: null, query: "", btn: null, count: null, exactCheck: "cc" },
+    attachmentIds: new Set(),
+    currentThread: null,
+    replyData: null,
+  };
+
+  // 添付ファイル付きメールのID一覧を取得（Gmail検索の has:attachment を使う）
+  async function loadAttachmentIds() {
+    const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
+    try {
+      const q = "(to:" + ME + " OR cc:" + ME + ") has:attachment newer_than:10d" + unreadFilter;
+      const r = await fetchPages(q, 2, null);
+      (r.threads || []).forEach(t => state.attachmentIds.add(t.id));
+    } catch(e) {}
+  }
+
+  // 野村宛メール用：添付ファイル詳細を get_thread で取得
+  // - 添付IDセットに該当するもののみ
+  // - 一回最大15件、並列8で取得（高速化）
+  // - 取得後すぐ再描画（待たない）
+  async function loadAttachmentDetailsForNomura(nomuraThreads) {
+    const targets = nomuraThreads.filter(t =>
+      state.attachmentIds.has(t.id) && t._attachmentDetails === undefined
+    ).slice(0, 15);
+    if (targets.length === 0) return;
+    // 並列8で一気に取得
+    const fetchOne = async (t) => {
+      try {
+        const result = await window.cowork.callMcpTool(GET_THREAD_TOOL, {
+          threadId: t.id, messageFormat: "FULL_CONTENT"
+        });
+        const data = parseResult(result);
+        const messages = (data && data.messages) || [];
+        const atts = [];
+        messages.forEach(msg => {
+          const list = msg.attachments || msg.attachment || msg.files || [];
+          if (Array.isArray(list)) {
+            list.forEach(a => {
+              const name = a.filename || a.name || a.fileName || "";
+              const mime = a.mimeType || a.contentType || "";
+              if (name) atts.push({ name: decodeMimeWord(name), mime, size: a.size || 0 });
+            });
+          }
+        });
+        t._attachmentDetails = atts;
+      } catch(e) {
+        t._attachmentDetails = [];
+      }
+    };
+    for (let i = 0; i < targets.length; i += 8) {
+      const batch = targets.slice(i, i + 8);
+      await Promise.all(batch.map(fetchOne));
+      renderColumns(); // 1波ごとに描画更新
+    }
+  }
+
+  function attIconFor(mime, name) {
+    const m = (mime || "").toLowerCase();
+    const n = (name || "").toLowerCase();
+    if (/pdf/.test(m) || /\.pdf$/.test(n)) return "📄";
+    if (/image|png|jpe?g|gif|webp|heic|tif/.test(m) || /\.(png|jpe?g|gif|webp|heic|tif)$/.test(n)) return "🖼️";
+    if (/word|doc/.test(m) || /\.docx?$/.test(n)) return "📝";
+    if (/excel|sheet|xls/.test(m) || /\.xlsx?$/.test(n)) return "📊";
+    if (/powerpoint|ppt/.test(m) || /\.pptx?$/.test(n)) return "📈";
+    if (/zip|rar|tar|7z/.test(m) || /\.(zip|rar|tar|7z)$/.test(n)) return "🗜️";
+    if (/video|mp4|mov|avi/.test(m) || /\.(mp4|mov|avi|mkv)$/.test(n)) return "🎬";
+    if (/audio|mp3|wav|m4a/.test(m) || /\.(mp3|wav|m4a|aac)$/.test(n)) return "🎵";
+    if (/dwg|dxf|cad/.test(m) || /\.(dwg|dxf|cad)$/.test(n)) return "📐";
+    return "📎";
+  }
+
+  // NRS判定：送信者ドメインが nrs1.jp
+  function isFromNrs(thread) {
+    const last = lastMessageOf(thread);
+    const domain = senderDomain(last.sender);
+    return domain === "nrs1.jp" || domain.endsWith(".nrs1.jp");
+  }
+
+  // スレッド内の最新メッセージを取得（日付でソートして最後のもの）
+  function lastMessageOf(thread) {
+    const msgs = thread.messages || [];
+    if (msgs.length === 0) return {};
+    if (msgs.length === 1) return msgs[0];
+    return msgs.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))[msgs.length - 1];
+  }
+
+  // 10日以内かどうかチェック（クライアント側の念押しフィルタ）
+  const TEN_DAYS_MS = 10 * 86400000;
+  function isWithin10Days(thread) {
+    const last = lastMessageOf(thread);
+    if (!last.date) return false;
+    const diff = Date.now() - new Date(last.date).getTime();
+    return diff >= 0 && diff <= TEN_DAYS_MS;
+  }
+
+  // 本文冒頭に「野村」が出てくるメールを判定
+  function startsWithNomura(thread) {
+    const msgs = thread.messages || [];
+    const last = msgs[msgs.length - 1] || {};
+    let snippet = (last.snippet || "").replace(/<[^>]+>/g, "").trim();
+    if (!snippet) return false;
+    const head = snippet.slice(0, 120);
+    // 「野村」+ 敬称・名前パターン
+    return /野村(様|さん|さま|殿|くん|君|氏|裕紀|ヒロノリ|ひろのり|ヒロ|宛|御中|チーム|プロデューサー|演出)/u.test(head)
+        || /^[\s　【\[「『]*野村[\s　,、]/u.test(head);
+  }
+
+  document.getElementById("filter-" + currentFilter).classList.add("active");
+  document.getElementById("filter-" + (currentFilter === "unread" ? "all" : "unread")).classList.remove("active");
+  document.getElementById("hide-ads").checked = hideAds;
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffH = (now - d) / 36e5;
+    if (diffH < 24) return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    if (diffH < 24 * 7) return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
+    return d.toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" });
+  }
+  function fmtFullDate(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleString("ja-JP");
+  }
+  function dateGroupKey(iso) {
+    if (!iso) return "unknown";
+    const d = new Date(iso);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function dateGroupLabel(iso) {
+    if (!iso) return "(日付不明)";
+    const d = new Date(iso);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((today - target) / 86400000);
+    const wdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const wd = wdays[d.getDay()];
+    if (diffDays === 0) return "今日 · " + (d.getMonth() + 1) + "/" + d.getDate() + " (" + wd + ")";
+    if (diffDays === 1) return "昨日 · " + (d.getMonth() + 1) + "/" + d.getDate() + " (" + wd + ")";
+    if (diffDays < 7) return diffDays + "日前 · " + (d.getMonth() + 1) + "/" + d.getDate() + " (" + wd + ")";
+    if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + "月" + d.getDate() + "日 (" + wd + ")";
+    return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() + " (" + wd + ")";
+  }
+  // MIMEエンコードされた文字列をデコード（=?UTF-8?B?...?= や =?ISO-2022-JP?Q?...?= など）
+  function decodeMimeWord(str) {
+    if (!str || typeof str !== "string") return str;
+    if (str.indexOf("=?") === -1) return str;
+    return str.replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=(\s*)/g, (match, charset, enc, text, ws) => {
+      try {
+        let bytes;
+        if (enc.toUpperCase() === "B") {
+          const bin = atob(text);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } else {
+          // Q encoding (quoted-printable)
+          const decoded = text.replace(/_/g, " ").replace(/=([0-9A-Fa-f]{2})/g, (m, hex) => String.fromCharCode(parseInt(hex, 16)));
+          bytes = new Uint8Array(decoded.length);
+          for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i) & 0xff;
+        }
+        const cs = charset.toLowerCase();
+        // TextDecoder はブラウザで utf-8 / iso-2022-jp / shift_jis / euc-jp 対応
+        const decoder = new TextDecoder(cs === "utf8" ? "utf-8" : cs);
+        return decoder.decode(bytes);
+      } catch(e) {
+        return match;
+      }
+    }).replace(/\?=\s+=\?/g, "?==?"); // 連続MIMEワードの間の空白除去
+  }
+
+  function senderName(s) {
+    if (!s) return "(不明)";
+    const decoded = decodeMimeWord(s);
+    const m = decoded.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) return m[1].trim();
+    if (decoded.includes("@")) return decoded.split("@")[0];
+    return decoded;
+  }
+  function senderEmail(s) {
+    if (!s) return "";
+    const m = s.match(/<([^>]+)>/);
+    if (m) return m[1].toLowerCase();
+    return s.toLowerCase();
+  }
+  function senderDomain(s) {
+    const e = senderEmail(s);
+    const at = e.lastIndexOf("@");
+    return at >= 0 ? e.slice(at + 1) : "";
+  }
+  function hasJapanese(s) { return /[぀-ゟ゠-ヿ一-鿿]/.test(s || ""); }
+
+  function isExactlyToMe(thread) {
+    const msgs = thread.messages || [];
+    for (const msg of msgs) {
+      const tos = (msg.toRecipients || []).map(r => String(r).toLowerCase());
+      if (tos.some(t => t === ME || t.includes("<" + ME + ">"))) return true;
+    }
+    return false;
+  }
+  function isExactlyCcMe(thread) {
+    const msgs = thread.messages || [];
+    for (const msg of msgs) {
+      const ccs = (msg.ccRecipients || []).map(r => String(r).toLowerCase());
+      if (ccs.some(c => c === ME || c.includes("<" + ME + ">"))) return true;
+    }
+    return false;
+  }
+
+  // snippet 本文から日本語名抽出（フルネーム優先）
+  function extractJapaneseNameFromSnippet(snippet) {
+    if (!snippet) return null;
+    const s = String(snippet).slice(0, 500);
+    const patterns = [
+      /株式会社\s*([一-鿿ぁ-ゖァ-ヺー]{2,12})\s*[\s,、]?\s*([一-鿿]{2,5})/,
+      /有限会社\s*([一-鿿ぁ-ゖァ-ヺー]{2,12})\s*[\s,、]?\s*([一-鿿]{2,5})/,
+      /([一-鿿ぁ-ゖァ-ヺー]{2,10})\s*の\s*([一-鿿]{2,5})\s*です/,
+      /([一-鿿ぁ-ゖァ-ヺー]{2,10})\s*の\s*([一-鿿]{2,5})\s*と申します/,
+      /([一-鿿]{2,5})\s*です[。\s,]/,
+      /([一-鿿]{2,5})\s*と申します/,
+      /([一-鿿]{2,5})\s*より/,
+    ];
+    for (const p of patterns) {
+      const m = s.match(p);
+      if (m) {
+        if (m[2]) return m[1] + " " + m[2];
+        return m[1];
+      }
+    }
+    return null;
+  }
+
+  const adNameMap = {
+    "amazon.co.jp": "Amazon", "amazon.com": "Amazon", "amazonses.com": "Amazon",
+    "rakuten.co.jp": "楽天", "emagazine.rakuten.co.jp": "楽天マイカー割", "mail.rakuten.co.jp": "楽天", "rakuten-card.co.jp": "楽天カード",
+    "pinterest.com": "Pinterest", "mail.instagram.com": "Instagram",
+    "x.com": "X", "mailer.x.com": "X",
+    "kickstarterhot.com": "Kickstarter", "kickstartech.co": "Kickstarter", "shutterstock.com": "Shutterstock",
+    "ocn.ne.jp": "OCN", "paypay.ne.jp": "PayPay", "paypay-card.co.jp": "PayPayカード",
+    "switchbot.cn": "SwitchBot", "switch-bot.com": "SwitchBot", "switchbot.jp": "SwitchBot",
+    "didi-mobility.com": "DiDi", "didiglobal.com": "DiDi", "mkt-jp.didiglobal.com": "DiDi",
+    "pvot-apparel.com": "Pvot", "g.shopifyemail.com": "Shopify",
+    "pelvini.com": "Pelvini", "ohmforce.com": "Ohm Force", "openai.com": "OpenAI", "email.openai.com": "OpenAI",
+    "polisher.jp": "polisherJP", "artlist.io": "Artlist",
+    "tokon.co.jp": "トーコン", "basemail.jp": "ALLAUMO", "h-resolution.com": "ハイレゾ", "my-day.shop": "my day",
+    "sride.co.jp": "S.RIDE", "microsoftstore.microsoft.com": "Microsoft",
+    "acestudio.ai": "ACE Studio", "aejuice.com": "AEJuice", "cloudflare.com": "Cloudflare", "adobe.com": "Adobe",
+    "dropboxmail.com": "Dropbox",
+  };
+
+  // 仕事関係のドメイン → 組織名（広告でないメールにも適用）
+  const workOrgMap = {
+    "amuse.co.jp": "アミューズ", "amuse-inc.co.jp": "アミューズ",
+    "pony-canyon.co.jp": "ポニーキャニオン", "ponycanyon.co.jp": "ポニーキャニオン",
+    "sonymusic.co.jp": "ソニーミュージック", "smej.co.jp": "ソニーミュージック",
+    "avexnet.or.jp": "エイベックス", "avex.com": "エイベックス", "avex.co.jp": "エイベックス",
+    "universal-music.co.jp": "ユニバーサル", "umusic.com": "ユニバーサル",
+    "warnermusic.co.jp": "ワーナー", "warnermusic.com": "ワーナー",
+    "kingrecords.co.jp": "キングレコード", "jvcmusic.co.jp": "JVCケンウッド",
+    "horipro.co.jp": "ホリプロ", "horiagency.co.jp": "ホリプロ",
+    "stardust.co.jp": "スターダスト", "ldh.co.jp": "LDH", "ldhjapan.co.jp": "LDH",
+    "vap.co.jp": "VAP", "nbcuni.co.jp": "NBCユニバーサル",
+    "toho.co.jp": "東宝", "shochiku.co.jp": "松竹", "kadokawa.co.jp": "KADOKAWA",
+    "nhk.or.jp": "NHK", "ntv.co.jp": "日テレ", "tbs.co.jp": "TBS",
+    "fujitv.co.jp": "フジテレビ", "tv-asahi.co.jp": "テレ朝", "tv-tokyo.co.jp": "テレ東",
+    "wowow.co.jp": "WOWOW", "abematv.co.jp": "ABEMA",
+    "dwango.co.jp": "ドワンゴ", "dentsu.co.jp": "電通", "hakuhodo.co.jp": "博報堂",
+    "yamaha.co.jp": "ヤマハ", "roland.co.jp": "ローランド",
+    "nrs1.jp": "NRS", "nrs2013.com": "NRS",
+  };
+
+  // 個人メールサービス（個人名はないので full email を表示）
+  const personalDomains = new Set([
+    "gmail.com", "googlemail.com", "yahoo.co.jp", "yahoo.com", "ymail.com",
+    "icloud.com", "me.com", "mac.com",
+    "outlook.com", "hotmail.com", "live.com", "msn.com",
+    "ezweb.ne.jp", "docomo.ne.jp", "softbank.ne.jp", "i.softbank.jp",
+    "au.com", "ymobile.ne.jp", "rakuten.jp", "nifty.com",
+  ]);
+
+  function lookupOrgName(domain) {
+    if (!domain) return null;
+    if (workOrgMap[domain]) return workOrgMap[domain];
+    if (adNameMap[domain]) return adNameMap[domain];
+    for (const k of Object.keys(workOrgMap)) {
+      if (domain.endsWith("." + k)) return workOrgMap[k];
+    }
+    for (const k of Object.keys(adNameMap)) {
+      if (domain.endsWith("." + k)) return adNameMap[k];
+    }
+    return null;
+  }
+
+  function adDisplayName(senderStr) {
+    const domain = senderDomain(senderStr);
+    if (!domain) return null;
+    if (adNameMap[domain]) return adNameMap[domain];
+    for (const k of Object.keys(adNameMap)) {
+      if (domain.endsWith("." + k)) return adNameMap[k];
+    }
+    return null;
+  }
+
+  function parseResult(result) {
+    if (!result) return null;
+    if (typeof result === "string") {
+      try { return JSON.parse(result); } catch (e) { return { _raw: result }; }
+    }
+    if (result.content && Array.isArray(result.content)) {
+      const textPart = result.content.find(c => c.type === "text");
+      if (textPart && textPart.text) {
+        try { return JSON.parse(textPart.text); } catch (e) { return { _raw: textPart.text }; }
+      }
+    }
+    if (result.result) return parseResult(result.result);
+    return result;
+  }
+
+  // 広告判定すべきメアドのローカル部（@より前）リスト
+  const adLocalParts = new Set([
+    "noreply", "no-reply", "donotreply", "do-not-reply",
+    "info", "info1", "info2", "info3",
+    "news", "notice", "notification", "alert", "alerts",
+    "auto-confirm", "order-update", "order-confirm",
+    "shipment-tracking", "shipment", "tracking", "delivery",
+    "mailer", "magazine", "newsletter", "newsletters",
+    "email", "emails", "contact", "service", "support", "help",
+    "admin", "account", "accounts", "billing", "payment", "payments",
+    "update", "updates", "promotion", "promotions", "marketing",
+    "customer", "customers", "member", "members", "membership",
+    "press", "public", "webmaster",
+    "reservation", "booking", "confirmation", "receipt",
+    "notify", "notifications", "noticeboard",
+    "team", "media", "insights", "posts-recaps", "event_support", "event-support",
+    "hello", "hi", "system", "no_reply",
+  ]);
+
+  function ruleClassify(thread) {
+    const msgs = thread.messages || [];
+    const last = msgs[msgs.length - 1] || {};
+    const email = senderEmail(last.sender);
+    const domain = senderDomain(last.sender);
+    const localPart = email.split("@")[0];
+    const subj = (last.subject || "").toLowerCase();
+
+    // 広告ドメイン判定
+    const adDomains = Object.keys(adNameMap);
+    const isAdDomain = adDomains.some(d => domain === d || domain.endsWith("." + d));
+    if (isAdDomain) return { kind: "ad" };
+
+    // ローカル部完全一致
+    if (adLocalParts.has(localPart)) return { kind: "ad" };
+
+    // ローカル部 prefix（"store+xxx", "info-xxx", "newsletter-xxx" など）
+    if (/^(store\+|store-|noreply|no-reply|newsletter|news-|info-|info\d|notify|alert|update|order|shipment|delivery|tracking|payment|billing|admin|customer|member|press|marketing|promotion|do-not-reply|donotreply|automated|automation|mailer|email|posts-|recap|recaps)/i.test(localPart)) {
+      return { kind: "ad" };
+    }
+
+    // 件名キーワード
+    const adKeywords = ["セール", "キャンペーン", "クーポン", "新商品", "ポイント", "本日限定", "限定", "プレゼント", "オフ", "%off", "newsletter", "メルマガ", "発売", "sale", "ご注文の確認", "発送のお知らせ", "発送されました", "お届け", "invoice", "verify your", "配達済み", "ご注文", "見逃し", "お知らせ", "ご案内", "会員", "メンバー", "ご登録", "ようこそ", "アカウント", "パスワード", "ログイン", "認証", "確認コード", "アンケート", "ご利用", "請求", "明細", "ご請求", "決済", "プラン", "更新しました", "delivered", "shipped", "your order", "weekly", "daily", "discover", "trending", "subscribe", "unsubscribe", "shipping update"];
+    if (adKeywords.some(k => subj.includes(k))) {
+      return { kind: "ad" };
+    }
+
+    // 件名と本文が完全英語（日本語含まず）→ 広告
+    const subjOriginal = last.subject || "";
+    const snipOriginal = last.snippet || "";
+    if (subjOriginal && !hasJapanese(subjOriginal) && !hasJapanese(snipOriginal.slice(0, 200))) {
+      return { kind: "ad" };
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // 送信者名 学習システム
+  // ============================================================
+  // 1. 仕事カテゴリ（reply / info）の未知送信者だけ処理
+  // 2. get_thread で本文を取得（Snippetだと署名が見えない）
+  // 3. AIに「本文署名や自己紹介から、送信者の正式な日本語名のみ抽出」を依頼
+  // 4. 自信がなければ null（推測しない）
+  // 5. 結果を localStorage に永久保存
+
+  async function fetchFullBodyForSender(thread) {
+    try {
+      const result = await window.cowork.callMcpTool(GET_THREAD_TOOL, {
+        threadId: thread.id, messageFormat: "FULL_CONTENT"
+      });
+      const data = parseResult(result);
+      const messages = (data && data.messages) || [];
+      const last = messages[messages.length - 1] || {};
+      let body = (last.body || last.snippet || "");
+      body = String(body).replace(/<[^>]+>/g, "");
+      return body;
+    } catch (e) { return ""; }
+  }
+
+  async function aiExtractSenderNamesBatch(samples) {
+    // samples: [{email, body}]
+    if (samples.length === 0) return {};
+    const items = samples.map((s, i) => ({
+      idx: i,
+      email: s.email,
+      // 本文の冒頭500字 + 末尾500字（署名は末尾にあることが多い）
+      body_head: s.body.slice(0, 500),
+      body_tail: s.body.length > 1000 ? s.body.slice(-500) : ""
+    }));
+    const prompt = "あなたはメール送信者の正式名を抽出するアシスタントです。各メールについて、**送信者の正式な日本語名**を本文から抽出してください。\n\n抽出ルール:\n1. 本文末尾の署名「---- 株式会社XX 山田太郎」「==== 山田太郎」のような部分から人名を抽出（最優先）\n2. 本文冒頭の自己紹介「○○の山田です」「私は山田と申します」など\n3. **受信者の名前と混同しない**：「野村様」「○○御中」のような宛名は受信者なので絶対に抽出しない\n4. メールアドレスのローカル部から推測しない（yamada@... を「山田」と当てるのは禁止）\n5. **自信がない場合は必ず null** を返す（推測・想像は厳禁）\n6. 個人名がわからず会社名のみ判明の場合は会社名を返す（例：「株式会社ポニーキャニオン」）\n7. 名前は姓のみ・姓名・フルネーム何でもOK（本文に書かれた通り）\n\nJSON配列のみで返答（説明文不要）:\n[{\"idx\":0,\"name\":\"高橋\",\"confidence\":\"high\"},{\"idx\":1,\"name\":null,\"confidence\":\"low\"},{\"idx\":2,\"name\":\"西山 千加\",\"confidence\":\"high\"}]";
+    try {
+      const result = await window.cowork.askClaude(prompt, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const t = result.content.find(c => c.type === "text");
+          text = t ? t.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      const m = text.match(/\[[\s\S]*\]/);
+      if (!m) return {};
+      const parsed = JSON.parse(m[0]);
+      const out = {};
+      parsed.forEach(p => {
+        if (p.name && p.confidence === "high") {
+          out[p.idx] = p.name;
+        }
+      });
+      return out;
+    } catch (e) { return {}; }
+  }
+
+  // バックグラウンドで未知の送信者の名前を学習
+  async function learnSenderNames(threads) {
+    // 仕事系（reply/info）かつアドレス帳に未登録の送信者だけ
+    const seen = new Map(); // email → thread (重複削除)
+    threads.forEach(t => {
+      if (!t._kind || t._kind === "ad" || t._kind === "loading") return;
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      const email = senderEmail(last.sender);
+      if (!email) return;
+      if (getSenderName(email)) return; // 既に学習済み
+      const domain = senderDomain(last.sender);
+      if (personalDomains.has(domain)) return; // 個人メアドは学習しない
+      // 通知系ローカル部はスキップ
+      const local = email.split("@")[0];
+      if (/^(noreply|no-reply|donotreply|info|news|notice|notify|alert|update|order|shipment|delivery|tracking|payment|billing|admin|customer|member|press|marketing|store|support|service|help|auto-confirm|order-update|shipment-tracking|magazine|newsletter|mailer|reservation|booking|confirmation|receipt|webmaster|account|hello|system|posts-recaps|event)/i.test(local)) {
+        // 通知系は学習スキップ（既にドメイン辞書で組織名出る）
+        return;
+      }
+      if (!seen.has(email)) seen.set(email, t);
+    });
+
+    const todo = Array.from(seen.entries()).slice(0, 12); // 1回最大12件
+    if (todo.length === 0) return;
+
+    // 各送信者の本文を並列取得
+    const samples = await Promise.all(todo.map(async ([email, thread]) => {
+      const body = await fetchFullBodyForSender(thread);
+      return { email, body };
+    }));
+
+    // AI抽出（5件ずつバッチ）
+    for (let i = 0; i < samples.length; i += 5) {
+      const batch = samples.slice(i, i + 5);
+      const result = await aiExtractSenderNamesBatch(batch);
+      batch.forEach((s, j) => {
+        if (result[j]) {
+          saveSenderName(s.email, result[j], "ai");
+        } else {
+          // null だった場合、再試行を防ぐためダミーを保存
+          saveSenderName(s.email, "", "ai-failed");
+        }
+      });
+    }
+  }
+
+  // AI: 野村宛以外用 - kind判定のみ（短い、トークン少）
+  async function aiClassifyKindOnly(threads) {
+    const items = threads.map((t, i) => {
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      return { idx: i, from: last.sender, subject: last.subject, snippet: (last.snippet || "").slice(0, 200) };
+    });
+    const prompt = "各メールを以下の3つに分類:\n- \"reply\": 仕事の依頼/相談/確認/図面・資料のやり取り（要返信）\n- \"info\": 情報共有、FYI、議事録、進捗報告\n- \"ad\": 広告/通知/ニュースレター/EC配送通知/SNS通知\n\nJSON配列のみで返答(説明文不要):\n[{\"idx\":0,\"kind\":\"reply\"},{\"idx\":1,\"kind\":\"ad\"}]";
+    try {
+      const result = await window.cowork.askClaude(prompt, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const t = result.content.find(c => c.type === "text");
+          text = t ? t.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      const m = text.match(/\[[\s\S]*\]/);
+      if (!m) return {};
+      const parsed = JSON.parse(m[0]);
+      const out = {};
+      parsed.forEach(p => { out[p.idx] = { kind: p.kind, summary: null }; });
+      return out;
+    } catch (e) { return {}; }
+  }
+
+  // AI: 野村宛用 - kind + 詳しい要約（200字）
+  async function aiClassifyBatch(threads) {
+    const items = threads.map((t, i) => {
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      return { idx: i, from: last.sender, subject: last.subject, snippet: (last.snippet || "").slice(0, 400) };
+    });
+    const prompt = "あなたはコンサート演出家のメール仕分けアシスタントです。各メールについて以下を判定:\n- kind: \"reply\"(要返信、仕事の依頼/相談/確認/図面・資料のやり取り)/\"info\"(情報共有、FYI、議事録、進捗報告)/\"ad\"(広告/通知/ニュースレター/EC配送通知/SNS通知/キャンペーン)\n- summary: kind=\"reply\"または\"info\"のみ生成。**日本語160〜220字**でメールの要点を詳しく要約。本文を読まなくても全体像が把握できるように、誰が・何を・どこで・いつ・どうしたいのか・締切や数字も含めて具体的に書く。複数の論点があれば全部触れる。例:「白石さんから5/3カルッツ川崎【東山奈央】の本番映像URLを共有。Dropboxで本番営巣を確認可能。情報取扱注意。スタッフは映像を確認したうえで来場時の運用に活かしてほしい旨。質問・修正点は明日までに連絡を、とのこと」。**kind=\"ad\"の場合は必ず空文字\"\"を返す**\n\nJSON配列のみ返答(説明文不要):\n[{\"idx\":0,\"kind\":\"reply\",\"summary\":\"佐久間さんから5/3東山奈央の最新図面送付。前回からの変更点はヒモ電飾カット・スクリーン27の追加。月末請求書発行のため確認お願いとのこと\"},{\"idx\":1,\"kind\":\"ad\",\"summary\":\"\"}]";
+    try {
+      const result = await window.cowork.askClaude(prompt, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const t = result.content.find(c => c.type === "text");
+          text = t ? t.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      const m = text.match(/\[[\s\S]*\]/);
+      if (!m) return {};
+      const parsed = JSON.parse(m[0]);
+      const out = {};
+      parsed.forEach(p => { out[p.idx] = { kind: p.kind, displayName: p.displayName, summary: p.summary }; });
+      return out;
+    } catch (e) { return {}; }
+  }
+
+  // 表示名ロジック（優先順）：
+  // 1. アドレス帳に保存済み（手動 > AI抽出）→ それを使う
+  // 2. From に表示名（Name <email>形式）→ そのまま使う
+  // 3. ピュアなメアドのみ → ドメイン辞書 → 「ローカル @ ドメイン/組織」
+  function displayNameOf(thread) {
+    const last = (thread.messages || [])[(thread.messages || []).length - 1] || {};
+    const sender = decodeMimeWord(last.sender || "");
+    if (!sender) return "(不明)";
+    const email = senderEmail(sender);
+
+    // 1. アドレス帳ヒット → 「名前 · 組織」or「名前」
+    const stored = getSenderName(email);
+    if (stored && stored.length > 0) {
+      const domain = senderDomain(sender);
+      const org = lookupOrgName(domain);
+      if (org && !stored.includes(org) && !stored.includes("@")) {
+        return stored + " · " + org;
+      }
+      return stored;
+    }
+
+    // 2. "Display Name <email@example.com>" 形式
+    const m = sender.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) {
+      const name = m[1].trim();
+      if (name) return name;
+    }
+    // 3. メアドだけ → ドメイン辞書
+    if (!sender.includes("@")) return sender;
+    const at = sender.lastIndexOf("@");
+    const local = sender.slice(0, at);
+    const domain = sender.slice(at + 1).toLowerCase();
+    const org = lookupOrgName(domain);
+    if (org) {
+      if (/^(noreply|no-reply|donotreply|do-not-reply|info|news|notice|notify|alert|update|order|shipment|delivery|tracking|payment|billing|admin|customer|member|press|marketing|store|support|service|help|auto-confirm|order-update|shipment-tracking|magazine|newsletter|mailer|reservation|booking|confirmation|receipt|webmaster|account|hello|system|posts-recaps|event)/i.test(local)) {
+        return org;
+      }
+      return local + " @ " + org;
+    }
+    if (personalDomains.has(domain)) return sender;
+    return local + " @ " + domain;
+  }
+
+  // renderItems は廃止。renderColumns() がグリッド全体を担当。
+
+  // 送信者名 編集ポップオーバー
+  function openNameEditPopover(email, anchorEl) {
+    document.querySelectorAll(".name-edit-popover").forEach(p => p.remove());
+    const cur = getSenderName(email) || "";
+    const pop = document.createElement("div");
+    pop.className = "name-edit-popover";
+    pop.innerHTML =
+      '<div class="label">送信者名を編集</div>' +
+      '<div class="email-display">' + escapeHtml(email) + '</div>' +
+      '<input type="text" id="name-input" placeholder="例: 大島 太郎" value="' + escapeHtml(cur) + '" />' +
+      '<div class="actions">' +
+        '<button class="save-btn">保存</button>' +
+        '<button class="cancel-btn">キャンセル</button>' +
+        '<button class="reset-btn">クリア</button>' +
+      '</div>';
+    document.body.appendChild(pop);
+    // ポップオーバーの位置決定（ボタンの近く）
+    const r = anchorEl.getBoundingClientRect();
+    let top = r.bottom + 6;
+    let left = r.left;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+    if (top + ph > window.innerHeight - 12) top = r.top - ph - 6;
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    const input = pop.querySelector("#name-input");
+    input.focus();
+    input.select();
+    pop.querySelector(".save-btn").addEventListener("click", () => {
+      const v = input.value.trim();
+      if (v) saveSenderName(email, v, "manual");
+      else saveSenderName(email, "", "manual-empty");
+      pop.remove();
+      renderColumns();
+    });
+    pop.querySelector(".cancel-btn").addEventListener("click", () => pop.remove());
+    pop.querySelector(".reset-btn").addEventListener("click", () => {
+      delete senderNameMap[email.toLowerCase()];
+      localStorage.setItem(SENDER_NAME_KEY, JSON.stringify(senderNameMap));
+      pop.remove();
+      renderColumns();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") pop.querySelector(".save-btn").click();
+      if (e.key === "Escape") pop.remove();
+    });
+    // 外側クリックで閉じる
+    setTimeout(() => {
+      const onOut = (e) => {
+        if (!pop.contains(e.target)) {
+          pop.remove();
+          document.removeEventListener("mousedown", onOut);
+        }
+      };
+      document.addEventListener("mousedown", onOut);
+    }, 0);
+  }
+
+
+
+  // 本文を読みやすく整形：HTMLタグ→改行変換、エンティティ復号、改行保持
+  function cleanBodyText(rawBody) {
+    if (!rawBody) return "";
+    let body = String(rawBody);
+    // HTML特殊タグを改行に変換
+    body = body
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|tr|h[1-6]|article|section|blockquote)>/gi, "\n")
+      .replace(/<(p|div|li|h[1-6])[^>]*>/gi, "\n")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, ""); // 残りのタグを削除
+    // HTMLエンティティ復号（よく使うものだけ手動で対応）
+    body = body
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&yen;/g, "¥")
+      .replace(/&hellip;/g, "…")
+      .replace(/&mdash;/g, "—")
+      .replace(/&ndash;/g, "–")
+      .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(parseInt(n, 10)))
+      .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)));
+    // 連続改行を最大2行に圧縮、行頭末空白を除去
+    body = body
+      .split(/\r?\n/)
+      .map(line => line.replace(/[ 　\s]+$/, "")) // 行末空白
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return escapeHtml(body);
+  }
+
+  // 受信者リスト：5名超の場合は折りたたみ
+  function renderRecipients(label, list) {
+    if (!list || list.length === 0) return "";
+    const cleaned = list.map(s => decodeMimeWord(String(s)));
+    if (cleaned.length <= 5) {
+      return '<div class="msg-head">' + label + ': ' + escapeHtml(cleaned.join(", ")) + '</div>';
+    }
+    const visible = cleaned.slice(0, 5).join(", ");
+    const rest = cleaned.slice(5).join(", ");
+    const hidden = cleaned.length - 5;
+    return '<details class="recip-details"><summary>' +
+      '<span class="recip-label">' + label + ':</span> ' +
+      '<span class="recip-visible">' + escapeHtml(visible) + '</span>' +
+      ' <span class="recip-more">+ 他' + hidden + '名 ▾</span>' +
+    '</summary>' +
+      '<div class="recip-rest">' + escapeHtml(rest) + '</div>' +
+    '</details>';
+  }
+
+  // モーダル：メール表示専用（編集UI無し）
+  async function openThread(thread) {
+    if (!thread) return;
+    state.currentThread = thread;
+    document.getElementById("modal-bg").classList.add("show");
+    const firstMsg = thread.messages && thread.messages[0];
+    document.getElementById("modal-title").textContent = decodeMimeWord((firstMsg && firstMsg.subject) || "") || "(件名なし)";
+    document.getElementById("modal-body").innerHTML = '<div class="loading-text">読み込み中…</div>';
+    document.getElementById("toast-area").innerHTML = "";
+    document.getElementById("attachments-area").innerHTML = "";
+    document.getElementById("open-gmail-link").href = "https://mail.google.com/mail/u/0/#inbox/" + thread.id;
+
+    try {
+      const result = await window.cowork.callMcpTool(GET_THREAD_TOOL, { threadId: thread.id, messageFormat: "FULL_CONTENT" });
+      const data = parseResult(result);
+      const messages = (data && data.messages) || [];
+
+      // 添付ファイル収集（全メッセージから）
+      const allAtts = [];
+      messages.forEach(msg => {
+        const atts = msg.attachments || msg.attachment || msg.files || [];
+        if (Array.isArray(atts)) {
+          atts.forEach(a => {
+            const name = a.filename || a.name || a.fileName || "(名前なし)";
+            const size = a.size || a.fileSize || 0;
+            const mime = a.mimeType || a.contentType || "";
+            allAtts.push({ name: decodeMimeWord(name), size, mime });
+          });
+        }
+      });
+      // 添付エリアを描画
+      const attArea = document.getElementById("attachments-area");
+      if (allAtts.length > 0) {
+        const fmtSize = (b) => {
+          if (!b) return "";
+          if (b < 1024) return b + "B";
+          if (b < 1024*1024) return (b/1024).toFixed(0) + "KB";
+          return (b/1024/1024).toFixed(1) + "MB";
+        };
+        const iconFor = (mime) => {
+          if (/pdf/.test(mime)) return "📄";
+          if (/image|png|jpeg|jpg|gif|webp/.test(mime)) return "🖼️";
+          if (/word|doc/.test(mime)) return "📝";
+          if (/excel|sheet|xls/.test(mime)) return "📊";
+          if (/powerpoint|ppt/.test(mime)) return "📈";
+          if (/zip|rar|tar/.test(mime)) return "🗜️";
+          if (/video|mp4|mov/.test(mime)) return "🎬";
+          if (/audio|mp3|wav/.test(mime)) return "🎵";
+          return "📎";
+        };
+        attArea.innerHTML = '<div class="attachment-list">' +
+          '<div class="label-row">📎 添付ファイル (' + allAtts.length + ')</div>' +
+          allAtts.map(a => '<div class="att-chip">' +
+            '<span>' + iconFor(a.mime) + '</span>' +
+            '<span class="att-name">' + escapeHtml(a.name) + '</span>' +
+            (a.size ? '<span class="att-size">' + fmtSize(a.size) + '</span>' : '') +
+          '</div>').join("") +
+        '</div>';
+      }
+
+      // 本文表示
+      const html = messages.map(msg => {
+        return '<div class="msg-block">' +
+          '<div class="msg-head"><span class="msg-from">' + escapeHtml(senderName(msg.sender)) + '</span> <span class="msg-email">&lt;' + escapeHtml(senderEmail(msg.sender)) + '&gt;</span><br><span class="msg-date">' + escapeHtml(fmtFullDate(msg.date)) + '</span></div>' +
+          renderRecipients("To", msg.toRecipients) +
+          renderRecipients("Cc", msg.ccRecipients) +
+          '<div class="msg-body">' + cleanBodyText(msg.body || msg.snippet || "") + '</div>' +
+        '</div>';
+      }).join("");
+      document.getElementById("modal-body").innerHTML = html;
+
+      // Mail.app リンク用データを準備（3パターン：送信者のみ / 全員 / 転送）
+      const lastMsg = messages[messages.length - 1] || {};
+      const senderAddr = senderEmail(lastMsg.sender);
+      const rawSubj = decodeMimeWord(lastMsg.subject || "");
+      const replySubj = /^re:/i.test(rawSubj) ? rawSubj : "Re: " + rawSubj;
+      const fwdSubj = /^fwd?:/i.test(rawSubj) ? rawSubj : "Fwd: " + rawSubj;
+      // 短い引用本文（mailto URL長すぎ問題回避）
+      const shortQuote = "\n\n--- " + senderName(lastMsg.sender) + " さんのメール ---\n" + ((lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 300));
+      // To/Ccから自分(ME)を除外したリストを作る → 全員返信用
+      const extractEmail = (s) => {
+        const m = String(s || "").match(/<([^>]+)>/);
+        return (m ? m[1] : String(s || "")).trim().toLowerCase();
+      };
+      const toList = (lastMsg.toRecipients || []).map(extractEmail).filter(e => e && e !== ME);
+      const ccList = (lastMsg.ccRecipients || []).map(extractEmail).filter(e => e && e !== ME);
+      // 全員返信：to=送信者+元のTo, cc=元のCc
+      const allTo = [senderAddr, ...toList].filter((v,i,a) => a.indexOf(v) === i); // 重複排除
+      const allCc = ccList.filter((v,i,a) => a.indexOf(v) === i);
+
+      state.replyData = { to: senderAddr, subject: replySubj, body: shortQuote };
+
+      // 1. 送信者のみに返信
+      const mailtoSender = "mailto:" + senderAddr
+        + "?subject=" + encodeURIComponent(replySubj)
+        + "&body=" + encodeURIComponent(shortQuote);
+      // 2. 全員に返信
+      const mailtoAll = "mailto:" + allTo.join(",")
+        + "?subject=" + encodeURIComponent(replySubj)
+        + (allCc.length ? "&cc=" + encodeURIComponent(allCc.join(",")) : "")
+        + "&body=" + encodeURIComponent(shortQuote);
+      // 3. 転送（宛先空、件名 Fwd:、本文に元メール）
+      const mailtoFwd = "mailto:"
+        + "?subject=" + encodeURIComponent(fwdSubj)
+        + "&body=" + encodeURIComponent("\n\n--- 転送 ---\nFrom: " + senderName(lastMsg.sender) + " <" + senderAddr + ">\nSubject: " + rawSubj + "\n\n" + ((lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 600)));
+
+      document.getElementById("mail-reply-sender").href = mailtoSender;
+      document.getElementById("mail-reply-all").href = mailtoAll;
+      document.getElementById("mail-forward").href = mailtoFwd;
+      // 全員返信ボタンは To/Cc に他に誰もいなければ無効化
+      const replyAllBtn = document.getElementById("mail-reply-all");
+      if (allTo.length <= 1 && allCc.length === 0) {
+        replyAllBtn.style.opacity = "0.4";
+        replyAllBtn.style.pointerEvents = "none";
+        replyAllBtn.title = "他の宛先がいないため無効";
+      } else {
+        replyAllBtn.style.opacity = "";
+        replyAllBtn.style.pointerEvents = "";
+        replyAllBtn.title = "To " + allTo.length + "名 / Cc " + allCc.length + "名";
+      }
+    } catch (e) {
+      document.getElementById("modal-body").innerHTML = '<div class="error">取得失敗: ' + escapeHtml(e.message || "") + '</div>';
+    }
+  }
+
+  function closeModal() {
+    document.getElementById("modal-bg").classList.remove("show");
+    state.currentThread = null;
+  }
+
+  document.getElementById("close-btn").addEventListener("click", closeModal);
+  document.getElementById("modal-bg").addEventListener("click", (e) => {
+    if (e.target.id === "modal-bg") closeModal();
+  });
+
+  // 3つの返信ボタンに共通の Mail.app 起動処理を仕込む
+  ["mail-reply-sender", "mail-reply-all", "mail-forward"].forEach(id => {
+    document.getElementById(id).addEventListener("click", (e) => {
+      const toast = document.getElementById("toast-area");
+      // フォールバック起動
+      setTimeout(() => {
+        try { window.open(e.currentTarget.href, "_self"); } catch(err) {}
+      }, 100);
+      const labelMap = {
+        "mail-reply-sender": "送信者へ返信",
+        "mail-reply-all": "全員に返信",
+        "mail-forward": "転送"
+      };
+      toast.innerHTML = '<div class="toast">✉️ Mail.appを起動中（' + labelMap[id] + '）…開かない場合は📋でアドレスをコピーしてMail.appで貼付してください</div>';
+    });
+  });
+
+  // 送信者アドレスをクリップボードへコピー
+  document.getElementById("copy-mailto-btn").addEventListener("click", async () => {
+    const r = state.replyData;
+    const toast = document.getElementById("toast-area");
+    if (!r || !r.to) { toast.innerHTML = '<div class="toast error">宛先が取得できませんでした</div>'; return; }
+    try {
+      await navigator.clipboard.writeText(r.to);
+      toast.innerHTML = '<div class="toast">📋 ' + escapeHtml(r.to) + ' をコピーしました</div>';
+    } catch(e) {
+      toast.innerHTML = '<div class="toast error">コピー失敗: ' + escapeHtml(r.to) + ' を手動でコピーしてください</div>';
+    }
+  });
+
+  async function classifyAll(threads) {
+    const todo = [];
+    threads.forEach((t) => {
+      if (t._kind && t._kind !== "loading" && t._summary !== undefined && t._displayName !== undefined) return;
+      const cached = kindCache[t.id];
+      if (cached && cached.summary !== undefined) {
+        t._kind = cached.kind; t._summary = cached.summary; t._displayName = cached.displayName || null;
+        return;
+      }
+      const r = ruleClassify(t);
+      if (r && r.kind === "ad") {
+        t._kind = "ad"; t._summary = null; t._displayName = null;
+        kindCache[t.id] = { kind: "ad", summary: null, displayName: null };
+        return;
+      }
+      todo.push(t);
+    });
+    if (todo.length > 0) {
+      // 野村宛(要約付き)と それ以外(kindのみ)に分ける → トークン節約
+      const nomuraTodo = todo.filter(t => startsWithNomura(t));
+      const otherTodo = todo.filter(t => !startsWithNomura(t));
+
+      const processBatches = async (list, fn) => {
+        const batches = [];
+        for (let i = 0; i < list.length; i += 10) batches.push(list.slice(i, i + 10));
+        const CONCURRENCY = 3;
+        for (let i = 0; i < batches.length; i += CONCURRENCY) {
+          const wave = batches.slice(i, i + CONCURRENCY);
+          await Promise.all(wave.map(async (batch) => {
+            const aiResult = await fn(batch);
+            batch.forEach((t, j) => {
+              const r = aiResult[j] || {};
+              t._kind = r.kind || "info";
+              t._summary = r.summary || null;
+              t._displayName = r.displayName || null;
+              kindCache[t.id] = { kind: t._kind, summary: t._summary, displayName: t._displayName };
+            });
+          }));
+          renderColumns();
+        }
+      };
+
+      // 並列で両系統を実行
+      await Promise.all([
+        processBatches(nomuraTodo, aiClassifyBatch),     // 野村宛: 要約付き
+        processBatches(otherTodo, aiClassifyKindOnly),   // 他: kindのみ
+      ]);
+    }
+    const keys = Object.keys(kindCache);
+    if (keys.length > 1500) {
+      const trimmed = {};
+      keys.slice(-1500).forEach(k => { trimmed[k] = kindCache[k]; });
+      kindCache = trimmed;
+    }
+    localStorage.setItem(KIND_CACHE_KEY, JSON.stringify(kindCache));
+  }
+
+  async function fetchPages(query, pages, pageToken) {
+    let allThreads = [];
+    let token = pageToken || null;
+    for (let p = 0; p < pages; p++) {
+      const args = { query: query, pageSize: 50 };
+      if (token) args.pageToken = token;
+      try {
+        const rawResult = await window.cowork.callMcpTool(SEARCH_TOOL, args);
+        const data = parseResult(rawResult);
+        const threads = (data && data.threads) || [];
+        allThreads = allThreads.concat(threads);
+        token = (data && data.nextPageToken) || null;
+        if (!token) break;
+      } catch (e) {
+        return { threads: allThreads, nextToken: token, error: e.message };
+      }
+    }
+    return { threads: allThreads, nextToken: token };
+  }
+
+  async function loadInitial(sectionKey, query) {
+    const s = state[sectionKey];
+    s.query = query;
+    s.threads = [];
+    s.nextToken = null;
+    s.count.textContent = "—";
+
+    const { threads, nextToken, error } = await fetchPages(query, INITIAL_PAGES, null);
+    if (error) {
+      s.count.textContent = "!";
+      return [];
+    }
+    const filterFn = s.exactCheck === "to" ? isExactlyToMe : isExactlyCcMe;
+    // 10日以内＋to/cc厳密フィルタ
+    const filtered = threads.filter(t => filterFn(t) && isWithin10Days(t));
+    s.threads = filtered;
+    s.nextToken = nextToken;
+    filtered.forEach(t => {
+      const cached = kindCache[t.id];
+      if (cached && cached.summary !== undefined) {
+        t._kind = cached.kind; t._summary = cached.summary; t._displayName = cached.displayName || null;
+      } else t._kind = "loading";
+    });
+    renderColumns();
+
+    await classifyAll(filtered);
+    renderColumns();
+
+    // バックグラウンドで送信者名学習（待たない）
+    learnSenderNames(filtered).then(() => renderColumns()).catch(()=>{});
+    return filtered;
+  }
+
+  // 日付揃えグリッド：4カラム（野村宛・NRSから・To・Cc）を同じ日付ヘッダーで横一線
+  // 優先度: 野村宛 > NRSから > To > Cc （重複は左優先）
+  function renderColumns() {
+    // 野村宛 を to+cc から抽出
+    const nomuraMap = new Map();
+    (state.to.threads || []).forEach(t => { if (startsWithNomura(t)) nomuraMap.set(t.id, t); });
+    (state.cc.threads || []).forEach(t => { if (startsWithNomura(t)) nomuraMap.set(t.id, t); });
+    const nomuraThreads = Array.from(nomuraMap.values()).sort((a, b) => {
+      const da = lastMessageOf(a).date || "";
+      const db = lastMessageOf(b).date || "";
+      return String(db).localeCompare(String(da));
+    });
+    state.nomura.threads = nomuraThreads;
+
+    // NRSから を to+cc から抽出（野村宛は除く）
+    const nrsMap = new Map();
+    (state.to.threads || []).forEach(t => { if (!nomuraMap.has(t.id) && isFromNrs(t)) nrsMap.set(t.id, t); });
+    (state.cc.threads || []).forEach(t => { if (!nomuraMap.has(t.id) && isFromNrs(t)) nrsMap.set(t.id, t); });
+    const nrsThreads = Array.from(nrsMap.values()).sort((a, b) => {
+      const da = lastMessageOf(a).date || "";
+      const db = lastMessageOf(b).date || "";
+      return String(db).localeCompare(String(da));
+    });
+    state.nrs.threads = nrsThreads;
+
+    const toFiltered = (state.to.threads || []).filter(t => !nomuraMap.has(t.id) && !nrsMap.has(t.id));
+    const ccFiltered = (state.cc.threads || []).filter(t => !nomuraMap.has(t.id) && !nrsMap.has(t.id));
+
+    // カラム件数表示更新
+    const visibleCount = (arr) => arr.filter(t => !(hideAds && t._kind === "ad")).length;
+    if (state.nomura.count) state.nomura.count.textContent = visibleCount(nomuraThreads);
+    if (state.nrs.count) state.nrs.count.textContent = visibleCount(nrsThreads);
+    if (state.to.count) state.to.count.textContent = visibleCount(toFiltered) + (state.to.nextToken ? "+" : "");
+    if (state.cc.count) state.cc.count.textContent = visibleCount(ccFiltered) + (state.cc.nextToken ? "+" : "");
+
+    // 日付ごとにグルーピング
+    const dateMap = {};
+    function addToGroup(thread, col) {
+      const last = lastMessageOf(thread);
+      const key = dateGroupKey(last.date);
+      if (!dateMap[key]) dateMap[key] = { nomura: [], nrs: [], to: [], cc: [], anyDate: last.date };
+      dateMap[key][col].push(thread);
+    }
+    nomuraThreads.forEach(t => addToGroup(t, "nomura"));
+    nrsThreads.forEach(t => addToGroup(t, "nrs"));
+    toFiltered.forEach(t => addToGroup(t, "to"));
+    ccFiltered.forEach(t => addToGroup(t, "cc"));
+
+    const sortedKeys = Object.keys(dateMap).sort((a, b) => b.localeCompare(a));
+
+    const grid = document.getElementById("mail-grid");
+    if (!grid) return;
+    Array.from(grid.children).forEach(c => {
+      if (!c.classList.contains("col-head")) c.remove();
+    });
+
+    if (sortedKeys.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.style.gridColumn = "1 / -1";
+      empty.textContent = "該当メールはありません";
+      grid.appendChild(empty);
+      return;
+    }
+
+    const allThreads = [];
+    function addItemsToCell(cellEl, threadList, kindCls, isLongSummary) {
+      if (kindCls) cellEl.classList.add(kindCls);
+      if (threadList.length === 0) {
+        cellEl.classList.add("empty-cell");
+        cellEl.innerHTML = "—";
+        return;
+      }
+      const html = threadList.map((t) => {
+        const startIdx = allThreads.length;
+        allThreads.push(t);
+        return renderItemHtml(t, startIdx, isLongSummary);
+      }).join("");
+      cellEl.innerHTML = html;
+    }
+
+    sortedKeys.forEach(k => {
+      const g = dateMap[k];
+      const today = new Date(); today.setHours(0,0,0,0);
+      const d = new Date(g.anyDate); const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const diffDays = Math.round((today - target) / 86400000);
+      const cls = diffDays === 0 ? "today" : diffDays === 1 ? "yesterday" : "";
+
+      const totalCount = g.nomura.length + g.nrs.length + g.to.length + g.cc.length;
+      const dateRow = document.createElement("div");
+      dateRow.className = "date-row " + cls;
+      dateRow.innerHTML = '<span class="date-label">' + escapeHtml(dateGroupLabel(g.anyDate)) + '</span>'
+        + '<span class="date-meta">' + totalCount + '件</span>';
+      grid.appendChild(dateRow);
+
+      const nomuraCell = document.createElement("div"); nomuraCell.className = "cell";
+      const toCell = document.createElement("div"); toCell.className = "cell";
+      const ccCell = document.createElement("div"); ccCell.className = "cell";
+      const nrsCell = document.createElement("div"); nrsCell.className = "cell";
+      addItemsToCell(nomuraCell, g.nomura, "priority", true);  // 野村宛は長い要約
+      addItemsToCell(toCell, g.to, null, false);
+      addItemsToCell(ccCell, g.cc, null, false);
+      addItemsToCell(nrsCell, g.nrs, "nrs", false);
+      grid.appendChild(nomuraCell);
+      grid.appendChild(toCell);
+      grid.appendChild(ccCell);
+      grid.appendChild(nrsCell);
+    });
+
+    grid.querySelectorAll(".item").forEach(el => {
+      const idx = parseInt(el.dataset.threadIdx, 10);
+      el.addEventListener("click", (e) => {
+        if (e.target.classList.contains("edit-name-btn")) return;
+        openThread(allThreads[idx]);
+      });
+    });
+    grid.querySelectorAll(".edit-name-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openNameEditPopover(btn.dataset.email, btn);
+      });
+    });
+
+    const hasMore = state.to.nextToken || state.cc.nextToken;
+    if (hasMore) {
+      const moreBtn = document.createElement("button");
+      moreBtn.className = "more-btn";
+      moreBtn.style.gridColumn = "1 / -1";
+      moreBtn.textContent = "↓ 過去のメールを読み込む";
+      moreBtn.addEventListener("click", async () => {
+        moreBtn.disabled = true;
+        moreBtn.textContent = "↻ 読み込み中…";
+        if (state.to.nextToken) await loadMore("to");
+        if (state.cc.nextToken) await loadMore("cc");
+      });
+      grid.appendChild(moreBtn);
+    }
+  }
+
+  // 本文full取得して完全URLを抽出するバックグラウンド処理
+  // snippet段階で「dropbox」等のキーワードが見つかったメールだけ対象
+  async function loadFullFileLinks(threads) {
+    const FILE_KEYWORDS = /dropbox|gigafile|wetransfer|drive\.google|docs\.google|firestorage|box\.com|we\.tl|db\.tt/i;
+    const todo = threads.filter(t => {
+      if (fileLinksCache[t.id] !== undefined) return false; // キャッシュ済
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      return FILE_KEYWORDS.test(last.snippet || "");
+    }).slice(0, 15); // 最大15件/refresh
+    if (todo.length === 0) return;
+
+    for (let i = 0; i < todo.length; i += 8) {
+      const batch = todo.slice(i, i + 8);
+      await Promise.all(batch.map(async (t) => {
+        try {
+          const result = await window.cowork.callMcpTool(GET_THREAD_TOOL, {
+            threadId: t.id, messageFormat: "FULL_CONTENT"
+          });
+          const data = parseResult(result);
+          const messages = (data && data.messages) || [];
+          let combined = "";
+          messages.forEach(msg => { combined += " " + (msg.body || msg.snippet || ""); });
+          // HTML エンティティ復号も軽くやる
+          combined = combined.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+          fileLinksCache[t.id] = extractFileLinks(combined);
+        } catch(e) {
+          fileLinksCache[t.id] = [];
+        }
+      }));
+      try { localStorage.setItem(FILE_LINKS_CACHE_KEY, JSON.stringify(fileLinksCache)); } catch(e) {}
+      renderColumns();
+    }
+  }
+
+  // 重要キーワードのハイライト処理（正規表現のみ、AI不使用）
+  // 「野村」「日付」「締切/期限」を視覚的に目立たせる
+  function highlightText(text) {
+    if (!text) return "";
+    let html = escapeHtml(text);
+    // 1. 締切系の強い注意キーワード（最優先で目立たせる）
+    html = html.replace(
+      /(締切|締め切り|〆切り?|納期|期限|デッドライン|至急|大至急|要返信|要対応|要確認|today|asap|urgent)/gi,
+      '<span class="hl-deadline">$1</span>'
+    );
+    // 2. 野村の名前（敬称含む）
+    html = html.replace(
+      /(野村(?:様|さま|さん|殿|くん|君|氏|裕紀|ひろのり|ヒロノリ|ヒロ)?)/g,
+      '<span class="hl-name">$1</span>'
+    );
+    // 3. 相対日付
+    html = html.replace(
+      /(明日|本日|今日|明後日|あさって|今週中|今月中|来週中|来月中|今日中|本日中|明日中|月末|来月末|月初)(?:まで|までに|に|中)?/g,
+      '<span class="hl-date">$&</span>'
+    );
+    // 4. 絶対日付：M月D日, M/D, MM/DD（日付らしいパターン）
+    html = html.replace(
+      /(\d{1,2}\s*[月\/\-]\s*\d{1,2}(?:\s*日)?(?:[(（]?[月火水木金土日][)）]?)?)/g,
+      '<span class="hl-date">$1</span>'
+    );
+    // 5. 時刻付き日付（例：5/3 18:00, 5月3日13時）
+    html = html.replace(
+      /(\d{1,2}[:時]\d{0,2}分?)/g,
+      '<span class="hl-date">$1</span>'
+    );
+    return html;
+  }
+
+  // ファイル共有リンク抽出（Dropbox / Google Drive / WeTransfer / ギガファイル便 等）
+  function extractFileLinks(snippet) {
+    if (!snippet) return [];
+    const text = String(snippet);
+    const patterns = [
+      { re: /https?:\/\/(?:www\.)?dropbox\.com\/[^\s<>"')]+/gi, label: "Dropbox", icon: "📦" },
+      { re: /https?:\/\/dl\.dropboxusercontent\.com\/[^\s<>"')]+/gi, label: "Dropbox", icon: "📦" },
+      { re: /https?:\/\/(?:www\.)?db\.tt\/[^\s<>"')]+/gi, label: "Dropbox", icon: "📦" },
+      { re: /https?:\/\/drive\.google\.com\/[^\s<>"')]+/gi, label: "Google Drive", icon: "📁" },
+      { re: /https?:\/\/docs\.google\.com\/[^\s<>"')]+/gi, label: "Google Docs", icon: "📄" },
+      { re: /https?:\/\/(?:www\.)?wetransfer\.com\/[^\s<>"')]+/gi, label: "WeTransfer", icon: "🚀" },
+      { re: /https?:\/\/we\.tl\/[^\s<>"')]+/gi, label: "WeTransfer", icon: "🚀" },
+      { re: /https?:\/\/(?:[\w-]+\.)?gigafile\.nu\/[^\s<>"')]+/gi, label: "ギガファイル", icon: "📦" },
+      { re: /https?:\/\/firestorage\.jp\/[^\s<>"')]+/gi, label: "Firestorage", icon: "📦" },
+      { re: /https?:\/\/(?:www\.)?box\.com\/[^\s<>"')]+/gi, label: "Box", icon: "📁" },
+      { re: /https?:\/\/[\w-]+\.box\.com\/[^\s<>"')]+/gi, label: "Box", icon: "📁" },
+    ];
+    const found = [];
+    const seen = new Set();
+    patterns.forEach(p => {
+      const matches = text.match(p.re);
+      if (matches) {
+        matches.forEach(url => {
+          // 末尾の不要文字（句読点等）削除
+          const cleaned = url.replace(/[.,;:!?'"」）)】>]+$/, "");
+          if (!seen.has(cleaned)) {
+            seen.add(cleaned);
+            found.push({ url: cleaned, label: p.label, icon: p.icon });
+          }
+        });
+      }
+    });
+    return found;
+  }
+
+  // 個別アイテムのHTMLを生成
+  // isLongSummary: true なら要約全文（80字程度）、false なら短く（30字でカット）
+  function renderItemHtml(t, idx, isLongSummary) {
+    const msgs = t.messages || [];
+    const last = lastMessageOf(t);
+    const threadCount = msgs.length;
+    const kind = t._kind || "loading";
+    const hidden = hideAds && kind === "ad" ? ' style="display:none"' : '';
+    let summaryHtml;
+    if (kind === "ad") {
+      summaryHtml = '';
+    } else if (isLongSummary) {
+      // 野村宛：AI要約があれば長文表示、なければ snippet
+      if (t._summary) {
+        summaryHtml = '<div class="summary long">' + escapeHtml(t._summary) + '</div>';
+      } else {
+        summaryHtml = '<div class="summary placeholder">' + escapeHtml((last.snippet || "").slice(0, 200)) + '</div>';
+      }
+    } else {
+      // 他カラム：常に原文 snippet を3行で表示（AI要約は使わない）
+      summaryHtml = '<div class="summary snippet-3line">' + escapeHtml((last.snippet || "").slice(0, 240)) + '</div>';
+    }
+    const senderEmailStr = senderEmail(last.sender);
+    const hasAtt = state.attachmentIds.has(t.id);
+    const attIcon = hasAtt ? '<span class="att-icon" title="添付ファイルあり">📎</span>' : '';
+
+    // 野村宛(isLongSummary)＆添付ありなら、リスト上にファイル名チップを表示
+    let attDetailHtml = '';
+    if (isLongSummary && hasAtt) {
+      const dets = t._attachmentDetails;
+      if (dets === undefined) {
+        attDetailHtml = '<div class="att-inline loading">📎 添付情報読み込み中…</div>';
+      } else if (dets.length > 0) {
+        const gmailUrl = "https://mail.google.com/mail/u/0/#inbox/" + t.id;
+        attDetailHtml = '<div class="att-inline">' + dets.map(a =>
+          '<a class="att-chip-inline" href="' + escapeHtml(gmailUrl) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="クリックで Gmail を開いて添付ファイルを開く">' +
+            '<span class="att-chip-icon">' + attIconFor(a.mime, a.name) + '</span>' +
+            '<span class="att-chip-name">' + escapeHtml(a.name) + '</span>' +
+          '</a>'
+        ).join("") + '</div>';
+      }
+    }
+
+    // ファイル共有リンク（Dropbox等）：完全URLキャッシュ優先、なければsnippetから（途切れる可能性あり）
+    let fileLinks;
+    if (fileLinksCache[t.id] !== undefined) {
+      fileLinks = fileLinksCache[t.id];
+    } else {
+      fileLinks = extractFileLinks(last.snippet || "");
+    }
+    let fileLinksHtml = '';
+    if (fileLinks && fileLinks.length > 0) {
+      fileLinksHtml = '<div class="file-links">' + fileLinks.map(fl =>
+        '<a class="file-link" href="' + escapeHtml(fl.url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' + escapeHtml(fl.url) + '">' +
+          '<span class="fl-icon">' + fl.icon + '</span>' +
+          '<span class="fl-text">' + escapeHtml(fl.label) + ': ' + escapeHtml(fl.url) + '</span>' +
+        '</a>'
+      ).join("") + '</div>';
+    }
+
+    return '<div class="item kind-' + kind + '" data-thread-idx="' + idx + '"' + hidden + '>' +
+      '<div class="row1">' +
+        '<div class="row1-left">' +
+          '<span class="dot ' + kind + '"></span>' +
+          '<span class="sender">' + escapeHtml(displayNameOf(t)) + '</span>' +
+          '<button class="edit-name-btn" data-email="' + escapeHtml(senderEmailStr) + '" title="送信者名を編集">✎</button>' +
+          (threadCount > 1 ? '<span class="badge">' + threadCount + '</span>' : '') +
+          attIcon +
+        '</div>' +
+        '<span class="date">' + escapeHtml(fmtDate(last.date)) + '</span>' +
+      '</div>' +
+      '<div class="subject">' + escapeHtml(decodeMimeWord(last.subject || "") || "(件名なし)") + '</div>' +
+      summaryHtml +
+      fileLinksHtml +
+      attDetailHtml +
+    '</div>';
+  }
+
+  async function loadMore(sectionKey) {
+    const s = state[sectionKey];
+    if (!s.nextToken) return;
+
+    const { threads, nextToken, error } = await fetchPages(s.query, MORE_PAGES, s.nextToken);
+    if (error) return;
+    const filterFn = s.exactCheck === "to" ? isExactlyToMe : isExactlyCcMe;
+    const filtered = threads.filter(t => filterFn(t) && isWithin10Days(t));
+    s.threads = s.threads.concat(filtered);
+    s.nextToken = nextToken;
+    s.threads.forEach(t => {
+      if (!t._kind) {
+        const cached = kindCache[t.id];
+        if (cached && cached.summary !== undefined) {
+          t._kind = cached.kind; t._summary = cached.summary; t._displayName = cached.displayName || null;
+        } else t._kind = "loading";
+      }
+    });
+    renderColumns();
+
+    await classifyAll(s.threads);
+    renderColumns();
+    learnSenderNames(filtered).then(() => renderColumns()).catch(()=>{});
+  }
+
+  async function refresh() {
+    const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
+    const dateFilter = " newer_than:10d"; // 過去10日間に絞る
+    const toQuery = "to:" + ME + dateFilter + unreadFilter;
+    const ccQuery = "cc:" + ME + dateFilter + unreadFilter;
+
+    state.nomura.count = document.getElementById("count-nomura");
+    state.nrs.count = document.getElementById("count-nrs");
+    state.to.count = document.getElementById("count-to");
+    state.cc.count = document.getElementById("count-cc");
+
+    document.getElementById("stats").textContent = "読み込み中…";
+    state.attachmentIds = new Set();
+    await Promise.all([
+      loadInitial("to", toQuery),
+      loadInitial("cc", ccQuery),
+      loadAttachmentIds(),
+    ]);
+    renderColumns();
+
+    // バックグラウンド：ファイル共有リンクの完全URL取得（Dropbox等が途切れて使えない問題対策）
+    const allThreads = [...state.to.threads, ...state.cc.threads];
+    loadFullFileLinks(allThreads).then(() => renderColumns()).catch(()=>{});
+    const nomuraCount = state.nomura.threads.length;
+    const nrsCount = state.nrs.threads.length;
+    const nomuraReply = state.nomura.threads.filter(t => t._kind === "reply").length;
+    document.getElementById("stats").innerHTML =
+      '★野村宛 <strong>' + nomuraCount + '</strong> · 要返信 <strong>' + nomuraReply + '</strong>　/　' +
+      'NRS <strong>' + nrsCount + '</strong>';
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    localStorage.setItem(STORE_KEY, f);
+    document.getElementById("filter-unread").classList.toggle("active", f === "unread");
+    document.getElementById("filter-all").classList.toggle("active", f === "all");
+    refresh();
+  }
+
+  document.getElementById("filter-unread").addEventListener("click", () => setFilter("unread"));
+  document.getElementById("filter-all").addEventListener("click", () => setFilter("all"));
+  document.getElementById("hide-ads").addEventListener("change", (e) => {
+    hideAds = e.target.checked;
+    localStorage.setItem(HIDE_KEY, hideAds ? "1" : "0");
+    renderColumns();
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>

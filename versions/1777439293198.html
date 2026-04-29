@@ -1,0 +1,521 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Mail Triage Dashboard",
+  "schemaVersion": 1,
+  "description": "のむさん用：To自分/CC自分の未読メールを一覧表示するダッシュボード。Gmail検索で取得、クリックでGmailで開く",
+  "mcpTools": [
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads"
+  ],
+  "mcpServerNames": [
+    "Gmail"
+  ]
+}
+</script>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>📬 メール仕分けダッシュボード</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", system-ui, sans-serif;
+    background: #202124; color: #e8eaed; margin: 0; padding: 16px;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; color: #e8eaed; }
+  .sub { color: #9aa0a6; font-size: 12px; margin-bottom: 16px; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+  .col { background: #2d2e30; border: 1px solid #3c4043; border-radius: 10px; overflow: hidden; }
+  .col-head {
+    padding: 10px 14px; font-weight: 600; font-size: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #3c4043;
+    background: #292a2c;
+  }
+  .col-head.to { color: #f28b82; }
+  .col-head.cc { color: #8ab4f8; }
+  .count { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #3c4043; color: #e8eaed; }
+  .list { max-height: 78vh; overflow-y: auto; }
+  .item { padding: 10px 14px; border-bottom: 1px solid #35363a; cursor: default; transition: background .12s; }
+  .item:hover { background: #35363a; }
+  .item:last-child { border-bottom: 0; }
+  .item.kind-ad { opacity: 0.42; }
+  .item.kind-ad .subject, .item.kind-ad .sender { font-weight: 400; }
+  .item.kind-reply { background: rgba(242,139,130,.06); }
+  .item.kind-reply:hover { background: rgba(242,139,130,.12); }
+  .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .sender { font-weight: 600; color: #e8eaed; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; cursor: pointer; }
+  .meta { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .date { font-size: 11px; color: #9aa0a6; }
+  .subject { font-size: 13px; color: #d2d4d7; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .snippet { font-size: 12px; color: #9aa0a6; margin-top: 4px; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+  .actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .act-btn {
+    background: #3c4043; color: #8ab4f8; border: 0; padding: 4px 10px;
+    border-radius: 4px; font-size: 11px; cursor: pointer; transition: background .12s;
+    text-decoration: none; display: inline-block;
+  }
+  .act-btn:hover { background: #4a4d52; }
+  .act-btn.primary { background: #8ab4f8; color: #202124 !important; font-weight: 600; }
+  .act-btn.primary:hover { background: #aecbfa; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; vertical-align: middle; line-height: 1.4; }
+  .badge.thread { background: #3c4043; color: #d2d4d7; margin-right: 4px; }
+  .tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; line-height: 1.4; flex-shrink: 0; }
+  .tag-reply { background: rgba(242,139,130,.2); color: #f28b82; }
+  .tag-info { background: rgba(253,214,99,.2); color: #fdd663; }
+  .tag-ad { background: #3c4043; color: #9aa0a6; }
+  .tag-loading { background: rgba(138,180,248,.2); color: #8ab4f8; }
+  .empty { padding: 24px; text-align: center; color: #9aa0a6; font-size: 13px; }
+  .loading { padding: 24px; text-align: center; color: #9aa0a6; font-size: 13px; }
+  .more-btn { display: block; width: 100%; padding: 10px; border: 0; background: #292a2c; color: #8ab4f8; font-size: 12px; cursor: pointer; border-top: 1px solid #3c4043; }
+  .more-btn:hover { background: #35363a; }
+  .more-btn:disabled { opacity: 0.5; cursor: default; }
+  .error { padding: 12px; background: rgba(242,139,130,.15); color: #f28b82; border-radius: 6px; font-size: 11px; word-break: break-all; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toggle { display: inline-flex; gap: 4px; background: #2d2e30; border: 1px solid #3c4043; border-radius: 8px; padding: 2px; }
+  .toggle button { background: transparent; border: 0; padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; color: #9aa0a6; }
+  .toggle button.active { background: #3c4043; color: #e8eaed; font-weight: 600; }
+  .stats { font-size: 12px; color: #9aa0a6; }
+  .stats strong { color: #e8eaed; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; user-select: none; color: #9aa0a6; }
+  .switch input { margin: 0; accent-color: #8ab4f8; }
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-track { background: #2d2e30; }
+  .list::-webkit-scrollbar-thumb { background: #5f6368; border-radius: 4px; }
+  .list::-webkit-scrollbar-thumb:hover { background: #80868b; }
+</style>
+</head>
+<body>
+  <h1>📬 メール仕分けダッシュボード</h1>
+  <div class="sub">「↩ Mail.appで返信」= Mail.app が開いて nrs1 から送信。「Gmailで開く」= Gmail で内容確認。</div>
+
+  <div class="controls">
+    <div class="toggle">
+      <button id="filter-unread" class="active">未読のみ</button>
+      <button id="filter-all">すべて</button>
+    </div>
+    <label class="switch"><input type="checkbox" id="hide-ads" checked /> 広告/通知を非表示</label>
+    <div class="stats" id="stats">読み込み中...</div>
+  </div>
+
+  <div class="columns">
+    <div class="col">
+      <div class="col-head to">
+        <span>📩 To自分</span>
+        <span class="count" id="count-to">-</span>
+      </div>
+      <div class="list" id="list-to"><div class="loading">読み込み中…</div></div>
+      <button class="more-btn" id="more-to" style="display:none">↓ もっと過去のメールを見る</button>
+    </div>
+    <div class="col">
+      <div class="col-head cc">
+        <span>📋 CC自分</span>
+        <span class="count" id="count-cc">-</span>
+      </div>
+      <div class="list" id="list-cc"><div class="loading">読み込み中…</div></div>
+      <button class="more-btn" id="more-cc" style="display:none">↓ もっと過去のメールを見る</button>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const SEARCH_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads";
+  const STORE_KEY = "mailDashFilter_v3";
+  const HIDE_KEY = "mailDashHideAds_v3";
+  const KIND_CACHE_KEY = "mailDashKindCache_v4";
+  const ME = "nomura@nrs1.jp";
+  const INITIAL_PAGES = 3;
+  const MORE_PAGES = 3;
+
+  let currentFilter = localStorage.getItem(STORE_KEY) || "unread";
+  let hideAds = localStorage.getItem(HIDE_KEY) !== "0";
+  let kindCache = {};
+  try { kindCache = JSON.parse(localStorage.getItem(KIND_CACHE_KEY) || "{}"); } catch(e) {}
+
+  const state = {
+    to: { threads: [], nextToken: null, query: "" },
+    cc: { threads: [], nextToken: null, query: "" },
+  };
+
+  document.getElementById("filter-" + currentFilter).classList.add("active");
+  document.getElementById("filter-" + (currentFilter === "unread" ? "all" : "unread")).classList.remove("active");
+  document.getElementById("hide-ads").checked = hideAds;
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffH = (now - d) / 36e5;
+    if (diffH < 24) return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    if (diffH < 24 * 7) return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+    return d.toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" });
+  }
+
+  function senderName(s) {
+    if (!s) return "(不明)";
+    const m = s.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) return m[1].trim();
+    if (s.includes("@")) return s.split("@")[0];
+    return s;
+  }
+  function senderEmail(s) {
+    if (!s) return "";
+    const m = s.match(/<([^>]+)>/);
+    if (m) return m[1].toLowerCase();
+    return s.toLowerCase();
+  }
+  function senderDomain(s) {
+    const e = senderEmail(s);
+    const at = e.lastIndexOf("@");
+    return at >= 0 ? e.slice(at + 1) : "";
+  }
+  function hasJapanese(s) {
+    return /[぀-ゟ゠-ヿ一-鿿]/.test(s || "");
+  }
+
+  const adNameMap = {
+    "amazon.co.jp": "Amazon", "amazon.com": "Amazon", "amazonses.com": "Amazon",
+    "rakuten.co.jp": "楽天", "emagazine.rakuten.co.jp": "楽天マイカー割", "mail.rakuten.co.jp": "楽天", "rakuten-card.co.jp": "楽天カード",
+    "pinterest.com": "Pinterest", "mail.instagram.com": "Instagram",
+    "x.com": "X (Twitter)", "mailer.x.com": "X (Twitter)",
+    "kickstarterhot.com": "Kickstarter", "kickstartech.co": "Kickstarter", "shutterstock.com": "Shutterstock",
+    "ocn.ne.jp": "OCN", "paypay.ne.jp": "PayPay", "paypay-card.co.jp": "PayPayカード",
+    "switchbot.cn": "SwitchBot", "switch-bot.com": "SwitchBot", "switchbot.jp": "SwitchBot",
+    "didi-mobility.com": "DiDi", "didiglobal.com": "DiDi", "mkt-jp.didiglobal.com": "DiDi",
+    "pvot-apparel.com": "Pvot", "g.shopifyemail.com": "Shopifyストア", "shopifyemail.com": "Shopifyストア",
+    "pelvini.com": "Pelvini", "ohmforce.com": "Ohm Force", "openai.com": "OpenAI", "email.openai.com": "OpenAI",
+    "polisher.jp": "polisherJP", "artlist.io": "Artlist", "newsletter.artlist.io": "Artlist", "olend.net": "Olend",
+    "tokon.co.jp": "トーコン", "basemail.jp": "ALLAUMO", "h-resolution.com": "ハイレゾリューション", "my-day.shop": "my day",
+    "sride.co.jp": "S.RIDE", "mail.sride.co.jp": "S.RIDE",
+    "microsoftstore.microsoft.com": "Microsoft Store", "e-mails.microsoft.com": "Microsoft",
+    "acestudio.ai": "ACE Studio", "aejuice.com": "AEJuice", "cloudflare.com": "Cloudflare", "adobe.com": "Adobe",
+    "googleadservices.com": "Google広告", "8card.net": "Eight", "info.dlmarket.jp": "DLmarket",
+    "dropboxmail.com": "Dropbox", "no-reply.dropbox.com": "Dropbox",
+    "facebookmail.com": "Facebook", "linkedin.com": "LinkedIn", "stripe.com": "Stripe", "airbnb.com": "Airbnb",
+  };
+
+  function adDisplayName(senderStr) {
+    const domain = senderDomain(senderStr);
+    if (!domain) return null;
+    if (adNameMap[domain]) return adNameMap[domain];
+    for (const k of Object.keys(adNameMap)) {
+      if (domain.endsWith("." + k)) return adNameMap[k];
+    }
+    return null;
+  }
+
+  function parseResult(result) {
+    if (!result) return null;
+    if (typeof result === "string") {
+      try { return JSON.parse(result); } catch (e) { return { _raw: result }; }
+    }
+    if (result.content && Array.isArray(result.content)) {
+      const textPart = result.content.find(c => c.type === "text");
+      if (textPart && textPart.text) {
+        try { return JSON.parse(textPart.text); } catch (e) { return { _raw: textPart.text }; }
+      }
+    }
+    if (result.result) return parseResult(result.result);
+    return result;
+  }
+
+  function ruleClassify(thread) {
+    const msgs = thread.messages || [];
+    const last = msgs[msgs.length - 1] || {};
+    const email = senderEmail(last.sender);
+    const domain = senderDomain(last.sender);
+    const subj = (last.subject || "").toLowerCase();
+    const rawName = senderName(last.sender);
+
+    const adDomains = Object.keys(adNameMap);
+    const isAdDomain = adDomains.some(d => domain === d || domain.endsWith("." + d));
+
+    if (isAdDomain) return { kind: "ad", displayName: adDisplayName(last.sender) };
+
+    if (/^(no-?reply|noreply|info\d?|news|notice|notification|alert|auto-confirm|order-update|shipment-tracking|donotreply|do-not-reply|mailer|store\+|magazine|email|help|support|insights|media|newsletter|team|event_support|event-support|posts-recaps)@/.test(email)) {
+      return { kind: "ad", displayName: adDisplayName(last.sender) || domain.split(".")[0] };
+    }
+
+    const adKeywords = ["セール", "キャンペーン", "クーポン", "新商品", "ポイント", "本日限定", "限定", "プレゼント", "オフ", "%off", "off!", "newsletter", "メルマガ", "発売", "sale", "special offer", "discount", "ご注文の確認", "発送のお知らせ", "発送されました", "お届け", "invoice", "payment status", "verify your", "配達済み", "配達しました", "ご注文", "お見逃し", "見逃し"];
+    if (adKeywords.some(k => subj.includes(k))) {
+      return { kind: "ad", displayName: adDisplayName(last.sender) || (hasJapanese(rawName) ? rawName : null) };
+    }
+
+    return null;
+  }
+
+  async function aiClassifyBatch(threads) {
+    const items = threads.map((t, i) => {
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      return {
+        idx: i, from: last.sender, subject: last.subject,
+        snippet: (last.snippet || "").slice(0, 250),
+      };
+    });
+    const prompt = `あなたはコンサート演出家のメール仕分けアシスタントです。各メールについて：
+(1) 分類: "reply"(要返信)/"info"(情報共有)/"ad"(広告通知)
+(2) displayName: 送信者の日本語表示名(snippetから自己紹介や署名を抽出。会社名+人名形式)
+JSON配列のみ返答:
+[{"idx":0,"kind":"reply","displayName":"野村裕紀"}, ...]`;
+    try {
+      const result = await window.cowork.askClaude(prompt, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const t = result.content.find(c => c.type === "text");
+          text = t ? t.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      const m = text.match(/\[[\s\S]*\]/);
+      if (!m) return {};
+      const parsed = JSON.parse(m[0]);
+      const out = {};
+      parsed.forEach(p => { out[p.idx] = { kind: p.kind, displayName: p.displayName }; });
+      return out;
+    } catch (e) { console.error("AI classify failed", e); return {}; }
+  }
+
+  function kindLabel(k) {
+    if (k === "reply") return '<span class="tag tag-reply">🔴 要返信</span>';
+    if (k === "info") return '<span class="tag tag-info">🟡 情報</span>';
+    if (k === "ad") return '<span class="tag tag-ad">⚫ 広告</span>';
+    return '<span class="tag tag-loading">判定中</span>';
+  }
+
+  function displayNameOf(thread) {
+    const last = (thread.messages || [])[(thread.messages || []).length - 1] || {};
+    if (thread._displayName) return thread._displayName;
+    return senderName(last.sender);
+  }
+
+  function gmailOpenUrl(thread) {
+    return "https://mail.google.com/mail/u/0/#inbox/" + thread.id;
+  }
+  function mailtoUrl(thread) {
+    const msgs = thread.messages || [];
+    const last = msgs[msgs.length - 1] || {};
+    const to = senderEmail(last.sender);
+    const rawSubj = last.subject || "";
+    const subj = /^re:/i.test(rawSubj) ? rawSubj : "Re: " + rawSubj;
+    return "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent(subj);
+  }
+
+  function renderItems(threads, container) {
+    if (!threads || threads.length === 0) {
+      container.innerHTML = '<div class="empty">該当メールはありません 🎉</div>';
+      return;
+    }
+    const html = threads.map((t, i) => {
+      const msgs = t.messages || [];
+      const last = msgs[msgs.length - 1] || {};
+      const threadCount = msgs.length;
+      const kind = t._kind || "loading";
+      const hidden = hideAds && kind === "ad" ? ' style="display:none"' : '';
+      const mUrl = mailtoUrl(t);
+      const gUrl = gmailOpenUrl(t);
+      return '<div class="item kind-' + kind + '" data-thread-idx="' + i + '"' + hidden + '>' +
+        '<div class="row1">' +
+          '<div class="sender" data-action="open">' + escapeHtml(displayNameOf(t)) + '</div>' +
+          '<div class="meta">' + kindLabel(kind) + '<span class="date">' + escapeHtml(fmtDate(last.date)) + '</span></div>' +
+        '</div>' +
+        '<div class="subject" data-action="open">' + (threadCount > 1 ? '<span class="badge thread">' + threadCount + '</span>' : '') + escapeHtml(last.subject || "(件名なし)") + '</div>' +
+        '<div class="snippet" data-action="open">' + escapeHtml((last.snippet || "").slice(0, 200)) + '</div>' +
+        (kind !== "ad" ?
+          '<div class="actions">' +
+            '<a class="act-btn primary" href="' + escapeAttr(mUrl) + '" target="_top" rel="noopener">↩ Mail.appで返信</a>' +
+            '<a class="act-btn" href="' + escapeAttr(gUrl) + '" target="_blank" rel="noopener">Gmailで開く</a>' +
+          '</div>'
+        : '') +
+      '</div>';
+    }).join("");
+    container.innerHTML = html;
+    container.querySelectorAll(".item").forEach(el => {
+      const idx = parseInt(el.dataset.threadIdx, 10);
+      const t = threads[idx];
+      if (!t) return;
+      el.querySelectorAll('[data-action="open"]').forEach(b => {
+        b.addEventListener("click", (e) => { e.stopPropagation(); window.open(gmailOpenUrl(t), "_blank"); });
+      });
+    });
+  }
+
+  function applyHideAds(container) {
+    container.querySelectorAll(".item.kind-ad").forEach(el => { el.style.display = hideAds ? "none" : ""; });
+  }
+
+  async function classifyAll(threads) {
+    const todo = [];
+    threads.forEach((t) => {
+      if (t._kind && t._kind !== "loading" && t._displayName) return;
+      const cached = kindCache[t.id];
+      if (cached) { t._kind = cached.kind; t._displayName = cached.displayName; return; }
+      const r = ruleClassify(t);
+      if (r && r.kind && r.displayName) {
+        t._kind = r.kind; t._displayName = r.displayName;
+        kindCache[t.id] = { kind: r.kind, displayName: r.displayName };
+      } else if (r && r.kind && !r.displayName) {
+        t._kind = r.kind;
+        const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+        const rawName = senderName(last.sender);
+        if (hasJapanese(rawName)) {
+          t._displayName = rawName;
+          kindCache[t.id] = { kind: r.kind, displayName: rawName };
+        } else todo.push(t);
+      } else todo.push(t);
+    });
+
+    if (todo.length > 0) {
+      for (let i = 0; i < todo.length; i += 20) {
+        const batch = todo.slice(i, i + 20);
+        const aiResult = await aiClassifyBatch(batch);
+        batch.forEach((t, j) => {
+          const r = aiResult[j] || { kind: "info", displayName: senderName((t.messages || [])[(t.messages || []).length - 1].sender) };
+          t._kind = r.kind || t._kind || "info";
+          t._displayName = r.displayName || senderName((t.messages || [])[(t.messages || []).length - 1].sender);
+          kindCache[t.id] = { kind: t._kind, displayName: t._displayName };
+        });
+      }
+    }
+
+    const keys = Object.keys(kindCache);
+    if (keys.length > 1500) {
+      const trimmed = {};
+      keys.slice(-1500).forEach(k => { trimmed[k] = kindCache[k]; });
+      kindCache = trimmed;
+    }
+    localStorage.setItem(KIND_CACHE_KEY, JSON.stringify(kindCache));
+  }
+
+  async function fetchPages(query, pages, pageToken) {
+    let allThreads = [];
+    let token = pageToken || null;
+    for (let p = 0; p < pages; p++) {
+      const args = { query: query, pageSize: 50 };
+      if (token) args.pageToken = token;
+      try {
+        const rawResult = await window.cowork.callMcpTool(SEARCH_TOOL, args);
+        const data = parseResult(rawResult);
+        const threads = (data && data.threads) || [];
+        allThreads = allThreads.concat(threads);
+        token = (data && data.nextPageToken) || null;
+        if (!token) break;
+      } catch (e) {
+        return { threads: allThreads, nextToken: token, error: e.message };
+      }
+    }
+    return { threads: allThreads, nextToken: token };
+  }
+
+  async function loadInitial(sectionKey, listEl, countEl, moreBtn, query) {
+    state[sectionKey].query = query;
+    state[sectionKey].threads = [];
+    state[sectionKey].nextToken = null;
+    listEl.innerHTML = '<div class="loading">読み込み中…</div>';
+    countEl.textContent = "-";
+    moreBtn.style.display = "none";
+
+    const { threads, nextToken, error } = await fetchPages(query, INITIAL_PAGES, null);
+    if (error) {
+      listEl.innerHTML = '<div class="error">取得失敗: ' + escapeHtml(error) + '</div>';
+      countEl.textContent = "!";
+      return;
+    }
+    state[sectionKey].threads = threads;
+    state[sectionKey].nextToken = nextToken;
+    threads.forEach(t => {
+      const cached = kindCache[t.id];
+      if (cached) { t._kind = cached.kind; t._displayName = cached.displayName; }
+      else t._kind = "loading";
+    });
+    renderItems(threads, listEl);
+    countEl.textContent = threads.length + (nextToken ? "+" : "");
+    moreBtn.style.display = nextToken ? "block" : "none";
+
+    await classifyAll(threads);
+    renderItems(threads, listEl);
+    return threads;
+  }
+
+  async function loadMore(sectionKey, listEl, countEl, moreBtn) {
+    if (!state[sectionKey].nextToken) return;
+    moreBtn.disabled = true;
+    moreBtn.textContent = "↻ 取得中…";
+
+    const { threads, nextToken, error } = await fetchPages(state[sectionKey].query, MORE_PAGES, state[sectionKey].nextToken);
+    if (error) {
+      moreBtn.textContent = "↓ もっと見る (失敗、再試行)";
+      moreBtn.disabled = false;
+      return;
+    }
+    state[sectionKey].threads = state[sectionKey].threads.concat(threads);
+    state[sectionKey].nextToken = nextToken;
+    state[sectionKey].threads.forEach(t => {
+      if (!t._kind) {
+        const cached = kindCache[t.id];
+        if (cached) { t._kind = cached.kind; t._displayName = cached.displayName; }
+        else t._kind = "loading";
+      }
+    });
+    renderItems(state[sectionKey].threads, listEl);
+    countEl.textContent = state[sectionKey].threads.length + (nextToken ? "+" : "");
+    moreBtn.style.display = nextToken ? "block" : "none";
+    moreBtn.disabled = false;
+    moreBtn.textContent = "↓ もっと過去のメールを見る";
+
+    await classifyAll(state[sectionKey].threads);
+    renderItems(state[sectionKey].threads, listEl);
+  }
+
+  async function refresh() {
+    const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
+    const toQuery = "to:" + ME + unreadFilter;
+    const ccQuery = "cc:" + ME + unreadFilter;
+
+    document.getElementById("stats").textContent = "読み込み中...";
+    const [toThreads, ccThreads] = await Promise.all([
+      loadInitial("to", document.getElementById("list-to"), document.getElementById("count-to"), document.getElementById("more-to"), toQuery),
+      loadInitial("cc", document.getElementById("list-cc"), document.getElementById("count-cc"), document.getElementById("more-cc"), ccQuery),
+    ]);
+    const toReply = (toThreads || []).filter(t => t._kind === "reply").length;
+    const ccReply = (ccThreads || []).filter(t => t._kind === "reply").length;
+    document.getElementById("stats").innerHTML =
+      '<strong>To: ' + (toThreads || []).length + '件</strong>(うち🔴' + toReply + ')　・　' +
+      '<strong>CC: ' + (ccThreads || []).length + '件</strong>(うち🔴' + ccReply + ')　' +
+      (currentFilter === "unread" ? "(未読のみ)" : "(全件)");
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    localStorage.setItem(STORE_KEY, f);
+    document.getElementById("filter-unread").classList.toggle("active", f === "unread");
+    document.getElementById("filter-all").classList.toggle("active", f === "all");
+    refresh();
+  }
+
+  document.getElementById("filter-unread").addEventListener("click", () => setFilter("unread"));
+  document.getElementById("filter-all").addEventListener("click", () => setFilter("all"));
+  document.getElementById("hide-ads").addEventListener("change", (e) => {
+    hideAds = e.target.checked;
+    localStorage.setItem(HIDE_KEY, hideAds ? "1" : "0");
+    applyHideAds(document.getElementById("list-to"));
+    applyHideAds(document.getElementById("list-cc"));
+  });
+  document.getElementById("more-to").addEventListener("click", () => loadMore("to", document.getElementById("list-to"), document.getElementById("count-to"), document.getElementById("more-to")));
+  document.getElementById("more-cc").addEventListener("click", () => loadMore("cc", document.getElementById("list-cc"), document.getElementById("count-cc"), document.getElementById("more-cc")));
+
+  refresh();
+})();
+</script>
+</body>
+</html>

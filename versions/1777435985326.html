@@ -1,0 +1,462 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Mail Triage Dashboard",
+  "schemaVersion": 1,
+  "description": "のむさん用：To自分/CC自分の未読メールを一覧表示するダッシュボード。Gmail検索で取得、クリックでGmailで開く",
+  "mcpTools": [
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads"
+  ],
+  "mcpServerNames": [
+    "Gmail"
+  ]
+}
+</script>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>📬 メール仕分けダッシュボード</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", system-ui, sans-serif;
+    background: #fafafa; color: #222; margin: 0; padding: 16px;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+  .col { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; overflow: hidden; }
+  .col-head {
+    padding: 10px 14px; font-weight: 600; font-size: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #eee;
+  }
+  .col-head.to { background: #fef2f2; color: #b91c1c; }
+  .col-head.cc { background: #eff6ff; color: #1d4ed8; }
+  .count { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.08); }
+  .list { max-height: 78vh; overflow-y: auto; }
+  .item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background .12s; }
+  .item:hover { background: #f8fafc; }
+  .item:last-child { border-bottom: 0; }
+  .item.kind-ad { opacity: 0.45; }
+  .item.kind-ad .subject, .item.kind-ad .sender { font-weight: 400; }
+  .item.kind-reply { background: #fffbf0; }
+  .item.kind-reply:hover { background: #fff7e0; }
+  .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .sender { font-weight: 600; color: #111; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+  .meta { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .date { font-size: 11px; color: #888; }
+  .subject { font-size: 13px; color: #333; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snippet { font-size: 12px; color: #777; margin-top: 4px; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; vertical-align: middle; line-height: 1.4; }
+  .badge.thread { background: #e5e7eb; color: #374151; margin-right: 4px; }
+  .tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; line-height: 1.4; flex-shrink: 0; }
+  .tag-reply { background: #fee2e2; color: #b91c1c; }
+  .tag-info { background: #fef3c7; color: #b45309; }
+  .tag-ad { background: #e5e7eb; color: #6b7280; }
+  .tag-loading { background: #dbeafe; color: #1e40af; }
+  .empty { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+  .loading { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+  .more-btn { display: block; width: 100%; padding: 10px; border: 0; background: #f3f4f6; color: #444; font-size: 12px; cursor: pointer; border-top: 1px solid #eee; }
+  .more-btn:hover { background: #e5e7eb; }
+  .more-btn:disabled { opacity: 0.5; cursor: default; }
+  .error { padding: 12px; background: #fef2f2; color: #b91c1c; border-radius: 6px; font-size: 11px; word-break: break-all; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toggle { display: inline-flex; gap: 4px; background: #f3f4f6; border-radius: 8px; padding: 2px; }
+  .toggle button { background: transparent; border: 0; padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; color: #555; }
+  .toggle button.active { background: #fff; color: #111; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 600; }
+  .stats { font-size: 12px; color: #666; }
+  .stats strong { color: #111; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; user-select: none; }
+  .switch input { margin: 0; }
+</style>
+</head>
+<body>
+  <h1>📬 メール仕分けダッシュボード</h1>
+  <div class="sub">nomura@nrs1.jp に届いたメールを自動分類。🔴要返信 / 🟡情報共有 / ⚫広告はAI判定。下の「もっと見る」で過去にも遡れます。</div>
+
+  <div class="controls">
+    <div class="toggle">
+      <button id="filter-unread" class="active">未読のみ</button>
+      <button id="filter-all">すべて</button>
+    </div>
+    <label class="switch"><input type="checkbox" id="hide-ads" checked /> 広告/通知を非表示</label>
+    <div class="stats" id="stats">読み込み中...</div>
+  </div>
+
+  <div class="columns">
+    <div class="col">
+      <div class="col-head to">
+        <span>📩 To自分</span>
+        <span class="count" id="count-to">-</span>
+      </div>
+      <div class="list" id="list-to"><div class="loading">読み込み中…</div></div>
+      <button class="more-btn" id="more-to" style="display:none">↓ もっと過去のメールを見る</button>
+    </div>
+    <div class="col">
+      <div class="col-head cc">
+        <span>📋 CC自分</span>
+        <span class="count" id="count-cc">-</span>
+      </div>
+      <div class="list" id="list-cc"><div class="loading">読み込み中…</div></div>
+      <button class="more-btn" id="more-cc" style="display:none">↓ もっと過去のメールを見る</button>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const SEARCH_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads";
+  const STORE_KEY = "mailDashFilter_v3";
+  const HIDE_KEY = "mailDashHideAds_v3";
+  const KIND_CACHE_KEY = "mailDashKindCache_v3";
+  const ME = "nomura@nrs1.jp";
+  const INITIAL_PAGES = 3; // 初回 3ページ = 150件
+  const MORE_PAGES = 3;    // 「もっと見る」で 3ページ追加
+
+  let currentFilter = localStorage.getItem(STORE_KEY) || "unread";
+  let hideAds = localStorage.getItem(HIDE_KEY) !== "0";
+  let kindCache = {};
+  try { kindCache = JSON.parse(localStorage.getItem(KIND_CACHE_KEY) || "{}"); } catch(e) {}
+
+  // セクションごとの状態
+  const state = {
+    to: { threads: [], nextToken: null, query: "" },
+    cc: { threads: [], nextToken: null, query: "" },
+  };
+
+  document.getElementById("filter-" + currentFilter).classList.add("active");
+  document.getElementById("filter-" + (currentFilter === "unread" ? "all" : "unread")).classList.remove("active");
+  document.getElementById("hide-ads").checked = hideAds;
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffH = (now - d) / 36e5;
+    if (diffH < 24) return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    if (diffH < 24 * 7) return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+    return d.toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" });
+  }
+
+  function senderName(s) {
+    if (!s) return "(不明)";
+    const m = s.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) return m[1].trim();
+    if (s.includes("@")) return s.split("@")[0];
+    return s;
+  }
+  function senderEmail(s) {
+    if (!s) return "";
+    const m = s.match(/<([^>]+)>/);
+    if (m) return m[1].toLowerCase();
+    return s.toLowerCase();
+  }
+  function senderDomain(s) {
+    const e = senderEmail(s);
+    const at = e.lastIndexOf("@");
+    return at >= 0 ? e.slice(at + 1) : "";
+  }
+
+  function parseResult(result) {
+    if (!result) return null;
+    if (typeof result === "string") {
+      try { return JSON.parse(result); } catch (e) { return { _raw: result }; }
+    }
+    if (result.content && Array.isArray(result.content)) {
+      const textPart = result.content.find(c => c.type === "text");
+      if (textPart && textPart.text) {
+        try { return JSON.parse(textPart.text); } catch (e) { return { _raw: textPart.text }; }
+      }
+    }
+    if (result.result) return parseResult(result.result);
+    return result;
+  }
+
+  // ルールベース判定
+  function ruleClassify(thread) {
+    const msgs = thread.messages || [];
+    const last = msgs[msgs.length - 1] || {};
+    const sender = (last.sender || "").toLowerCase();
+    const email = senderEmail(last.sender);
+    const domain = senderDomain(last.sender);
+    const subj = (last.subject || "").toLowerCase();
+
+    const adDomains = [
+      "rakuten.co.jp", "rakuten.com", "rakuten-card.co.jp", "mail.rakuten.com", "emagazine.rakuten.co.jp", "mail.rakuten.co.jp",
+      "pinterest.com", "mail.instagram.com", "mailer.x.com", "x.com", "twitter.com",
+      "amazon.co.jp", "amazon.com", "amazonses.com",
+      "kickstarterhot.com", "kickstartech.co", "shutterstock.com",
+      "ocn.ne.jp", "paypay.ne.jp", "paypay-card.co.jp", "mail.paypay.ne.jp",
+      "facebookmail.com", "linkedin.com", "stripe.com",
+      "switchbot.cn", "switch-bot.com", "switchbot.jp",
+      "didi-mobility.com", "didiglobal.com", "mkt-jp.didiglobal.com",
+      "pvot-apparel.com",
+      "google.com", "noreply.google.com", "accounts.google.com",
+      "dropboxmail.com", "no-reply.dropbox.com",
+      "airbnb.com", "airbnbmail.com",
+      "info.dlmarket.jp",
+      "g.shopifyemail.com", "shopifyemail.com",
+      "pelvini.com", "ohmforce.com", "openai.com", "email.openai.com",
+      "polisher.jp", "artlist.io", "newsletter.artlist.io", "olend.net",
+      "tokon.co.jp", "basemail.jp", "h-resolution.com", "my-day.shop",
+      "mail.sride.co.jp", "sride.co.jp",
+      "microsoftstore.microsoft.com", "e-mails.microsoft.com",
+      "acestudio.ai", "aejuice.com", "cloudflare.com", "adobe.com",
+      "8card.net", "eight-card.net",
+    ];
+    if (adDomains.some(d => domain === d || domain.endsWith("." + d))) return "ad";
+
+    if (/^(no-?reply|noreply|info\d?|news|notice|notification|alert|auto-confirm|order-update|shipment-tracking|donotreply|do-not-reply|mailer|store\+|magazine|email|help|support|insights|media|newsletter|team|event_support|event-support|posts-recaps)@/.test(email)) {
+      return "ad";
+    }
+
+    const adKeywords = ["セール", "キャンペーン", "クーポン", "新商品", "ポイント", "本日限定", "限定", "プレゼント", "オフ", "%off", "off!", "newsletter", "メルマガ", "発売", "sale", "special offer", "discount", "ご注文の確認", "発送のお知らせ", "発送されました", "お届け", "invoice", "payment status", "verify your", "配達済み", "配達しました", "ご注文", "お見逃し", "見逃し"];
+    if (adKeywords.some(k => subj.includes(k))) return "ad";
+
+    if (/^(re:|fw:|fwd:)/i.test(last.subject || "") && !email.includes("noreply") && !email.includes("no-reply")) {
+      return "reply";
+    }
+
+    return null;
+  }
+
+  async function aiClassifyBatch(threads) {
+    const items = threads.map((t, i) => {
+      const last = (t.messages || [])[(t.messages || []).length - 1] || {};
+      return {
+        idx: i,
+        from: last.sender,
+        subject: last.subject,
+        snippet: (last.snippet || "").slice(0, 200),
+      };
+    });
+    const prompt = `あなたはコンサート演出家のメール仕分けアシスタントです。以下のメール一覧を分類してください：
+- "reply": 仕事関係で返信や対応が必要（依頼、相談、確認、図面・資料・見積もりのやり取りなど）
+- "info": 情報共有メール（FYI、進捗報告、議事録など。返信不要だが内容は確認すべき）
+- "ad": 広告、自動通知、ニュースレター、配送通知、SNS通知、キャンペーン、セールなど（読まなくていい）
+
+返答は以下のJSON配列のみで返してください。説明文は一切不要です:
+[{"idx":0,"kind":"reply"},{"idx":1,"kind":"ad"}, ...]`;
+    try {
+      const result = await window.cowork.askClaude(prompt, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const t = result.content.find(c => c.type === "text");
+          text = t ? t.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      const m = text.match(/\[[\s\S]*\]/);
+      if (!m) return {};
+      const parsed = JSON.parse(m[0]);
+      const out = {};
+      parsed.forEach(p => { out[p.idx] = p.kind; });
+      return out;
+    } catch (e) {
+      console.error("AI classify failed", e);
+      return {};
+    }
+  }
+
+  function kindLabel(k) {
+    if (k === "reply") return '<span class="tag tag-reply">🔴 要返信</span>';
+    if (k === "info") return '<span class="tag tag-info">🟡 情報</span>';
+    if (k === "ad") return '<span class="tag tag-ad">⚫ 広告</span>';
+    return '<span class="tag tag-loading">判定中</span>';
+  }
+
+  function renderItems(threads, container) {
+    if (!threads || threads.length === 0) {
+      container.innerHTML = '<div class="empty">該当メールはありません 🎉</div>';
+      return;
+    }
+    const html = threads.map(t => {
+      const msgs = t.messages || [];
+      const last = msgs[msgs.length - 1] || {};
+      const threadCount = msgs.length;
+      const url = "https://mail.google.com/mail/u/0/#inbox/" + t.id;
+      const kind = t._kind || "loading";
+      const hidden = hideAds && kind === "ad" ? ' style="display:none"' : '';
+      return '<div class="item kind-' + kind + '" data-url="' + url + '"' + hidden + '>' +
+        '<div class="row1">' +
+          '<div class="sender">' + escapeHtml(senderName(last.sender)) + '</div>' +
+          '<div class="meta">' + kindLabel(kind) + '<span class="date">' + escapeHtml(fmtDate(last.date)) + '</span></div>' +
+        '</div>' +
+        '<div class="subject">' + (threadCount > 1 ? '<span class="badge thread">' + threadCount + '</span>' : '') + escapeHtml(last.subject || "(件名なし)") + '</div>' +
+        '<div class="snippet">' + escapeHtml((last.snippet || "").slice(0, 200)) + '</div>' +
+      '</div>';
+    }).join("");
+    container.innerHTML = html;
+    container.querySelectorAll(".item").forEach(el => {
+      el.addEventListener("click", () => window.open(el.dataset.url, "_blank"));
+    });
+  }
+
+  function applyHideAds(container) {
+    container.querySelectorAll(".item.kind-ad").forEach(el => {
+      el.style.display = hideAds ? "none" : "";
+    });
+  }
+
+  async function classifyAll(threads) {
+    const todo = [];
+    threads.forEach((t, i) => {
+      if (t._kind && t._kind !== "loading") return;
+      if (kindCache[t.id]) {
+        t._kind = kindCache[t.id];
+        return;
+      }
+      const k = ruleClassify(t);
+      if (k) {
+        t._kind = k;
+        kindCache[t.id] = k;
+      } else {
+        todo.push({ thread: t, originalIdx: i });
+      }
+    });
+
+    if (todo.length > 0) {
+      const aiThreads = todo.map(x => x.thread);
+      // バッチ20件ずつ
+      for (let i = 0; i < aiThreads.length; i += 20) {
+        const batch = aiThreads.slice(i, i + 20);
+        const aiResult = await aiClassifyBatch(batch);
+        batch.forEach((t, j) => {
+          const k = aiResult[j] || "info";
+          t._kind = k;
+          kindCache[t.id] = k;
+        });
+      }
+    }
+
+    const keys = Object.keys(kindCache);
+    if (keys.length > 1000) {
+      const trimmed = {};
+      keys.slice(-1000).forEach(k => { trimmed[k] = kindCache[k]; });
+      kindCache = trimmed;
+    }
+    localStorage.setItem(KIND_CACHE_KEY, JSON.stringify(kindCache));
+  }
+
+  async function fetchPages(query, pages, pageToken) {
+    let allThreads = [];
+    let token = pageToken || null;
+    for (let p = 0; p < pages; p++) {
+      const args = { query: query, pageSize: 50 };
+      if (token) args.pageToken = token;
+      try {
+        const rawResult = await window.cowork.callMcpTool(SEARCH_TOOL, args);
+        const data = parseResult(rawResult);
+        const threads = (data && data.threads) || [];
+        allThreads = allThreads.concat(threads);
+        token = (data && data.nextPageToken) || null;
+        if (!token) break;
+      } catch (e) {
+        return { threads: allThreads, nextToken: token, error: e.message };
+      }
+    }
+    return { threads: allThreads, nextToken: token };
+  }
+
+  async function loadInitial(sectionKey, listEl, countEl, moreBtn, query) {
+    state[sectionKey].query = query;
+    state[sectionKey].threads = [];
+    state[sectionKey].nextToken = null;
+    listEl.innerHTML = '<div class="loading">読み込み中…</div>';
+    countEl.textContent = "-";
+    moreBtn.style.display = "none";
+
+    const { threads, nextToken, error } = await fetchPages(query, INITIAL_PAGES, null);
+    if (error) {
+      listEl.innerHTML = '<div class="error">取得失敗: ' + escapeHtml(error) + '</div>';
+      countEl.textContent = "!";
+      return;
+    }
+    state[sectionKey].threads = threads;
+    state[sectionKey].nextToken = nextToken;
+    threads.forEach(t => { t._kind = kindCache[t.id] || "loading"; });
+    renderItems(threads, listEl);
+    countEl.textContent = threads.length + (nextToken ? "+" : "");
+    moreBtn.style.display = nextToken ? "block" : "none";
+
+    await classifyAll(threads);
+    renderItems(threads, listEl);
+    return threads;
+  }
+
+  async function loadMore(sectionKey, listEl, countEl, moreBtn) {
+    if (!state[sectionKey].nextToken) return;
+    moreBtn.disabled = true;
+    moreBtn.textContent = "↻ 取得中…";
+
+    const { threads, nextToken, error } = await fetchPages(state[sectionKey].query, MORE_PAGES, state[sectionKey].nextToken);
+    if (error) {
+      moreBtn.textContent = "↓ もっと見る (失敗、再試行)";
+      moreBtn.disabled = false;
+      return;
+    }
+    state[sectionKey].threads = state[sectionKey].threads.concat(threads);
+    state[sectionKey].nextToken = nextToken;
+    state[sectionKey].threads.forEach(t => { if (!t._kind) t._kind = kindCache[t.id] || "loading"; });
+    renderItems(state[sectionKey].threads, listEl);
+    countEl.textContent = state[sectionKey].threads.length + (nextToken ? "+" : "");
+    moreBtn.style.display = nextToken ? "block" : "none";
+    moreBtn.disabled = false;
+    moreBtn.textContent = "↓ もっと過去のメールを見る";
+
+    await classifyAll(state[sectionKey].threads);
+    renderItems(state[sectionKey].threads, listEl);
+  }
+
+  async function refresh() {
+    const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
+    const toQuery = "to:" + ME + unreadFilter;
+    const ccQuery = "cc:" + ME + unreadFilter;
+
+    document.getElementById("stats").textContent = "読み込み中...";
+    const [toThreads, ccThreads] = await Promise.all([
+      loadInitial("to", document.getElementById("list-to"), document.getElementById("count-to"), document.getElementById("more-to"), toQuery),
+      loadInitial("cc", document.getElementById("list-cc"), document.getElementById("count-cc"), document.getElementById("more-cc"), ccQuery),
+    ]);
+    const toReply = (toThreads || []).filter(t => t._kind === "reply").length;
+    const ccReply = (ccThreads || []).filter(t => t._kind === "reply").length;
+    document.getElementById("stats").innerHTML =
+      '<strong>To: ' + (toThreads || []).length + '件</strong>(うち🔴' + toReply + ')　・　' +
+      '<strong>CC: ' + (ccThreads || []).length + '件</strong>(うち🔴' + ccReply + ')　' +
+      (currentFilter === "unread" ? "(未読のみ)" : "(全件)");
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    localStorage.setItem(STORE_KEY, f);
+    document.getElementById("filter-unread").classList.toggle("active", f === "unread");
+    document.getElementById("filter-all").classList.toggle("active", f === "all");
+    refresh();
+  }
+
+  document.getElementById("filter-unread").addEventListener("click", () => setFilter("unread"));
+  document.getElementById("filter-all").addEventListener("click", () => setFilter("all"));
+  document.getElementById("hide-ads").addEventListener("change", (e) => {
+    hideAds = e.target.checked;
+    localStorage.setItem(HIDE_KEY, hideAds ? "1" : "0");
+    applyHideAds(document.getElementById("list-to"));
+    applyHideAds(document.getElementById("list-cc"));
+  });
+  document.getElementById("more-to").addEventListener("click", () => loadMore("to", document.getElementById("list-to"), document.getElementById("count-to"), document.getElementById("more-to")));
+  document.getElementById("more-cc").addEventListener("click", () => loadMore("cc", document.getElementById("list-cc"), document.getElementById("count-cc"), document.getElementById("more-cc")));
+
+  refresh();
+})();
+</script>
+</body>
+</html>

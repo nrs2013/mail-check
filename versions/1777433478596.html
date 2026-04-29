@@ -1,0 +1,200 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Mail Triage Dashboard",
+  "schemaVersion": 1,
+  "description": "のむさん用：To自分/CC自分の未読メールを一覧表示するダッシュボード。Gmail検索で取得、クリックでGmailで開く",
+  "mcpTools": [
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads"
+  ],
+  "mcpServerNames": [
+    "Gmail"
+  ]
+}
+</script>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>📬 メール仕分けダッシュボード</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", system-ui, sans-serif;
+    background: #fafafa; color: #222; margin: 0; padding: 16px;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+  .col { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; overflow: hidden; }
+  .col-head {
+    padding: 10px 14px; font-weight: 600; font-size: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #eee;
+  }
+  .col-head.to { background: #fef2f2; color: #b91c1c; }
+  .col-head.cc { background: #eff6ff; color: #1d4ed8; }
+  .count { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.08); }
+  .list { max-height: 78vh; overflow-y: auto; }
+  .item { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background .12s; }
+  .item:hover { background: #f8fafc; }
+  .item:last-child { border-bottom: 0; }
+  .row1 { display: flex; justify-content: space-between; gap: 8px; }
+  .sender { font-weight: 600; color: #111; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  .date { font-size: 11px; color: #888; flex-shrink: 0; }
+  .subject { font-size: 13px; color: #333; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snippet { font-size: 12px; color: #777; margin-top: 4px; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-right: 4px; vertical-align: middle; }
+  .badge.thread { background: #e5e7eb; color: #374151; }
+  .empty { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+  .loading { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+  .error { padding: 16px; background: #fef2f2; color: #b91c1c; border-radius: 8px; font-size: 12px; margin-bottom: 12px; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toggle { display: inline-flex; gap: 4px; background: #f3f4f6; border-radius: 8px; padding: 2px; }
+  .toggle button { background: transparent; border: 0; padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; color: #555; }
+  .toggle button.active { background: #fff; color: #111; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 600; }
+  .stats { font-size: 12px; color: #666; }
+  .stats strong { color: #111; }
+</style>
+</head>
+<body>
+  <h1>📬 メール仕分けダッシュボード</h1>
+  <div class="sub">nomura@nrs1.jp に届いたメールを「To自分」「CC自分」で分類表示。クリックでGmailで開きます。</div>
+
+  <div class="controls">
+    <div class="toggle">
+      <button id="filter-unread" class="active">未読のみ</button>
+      <button id="filter-all">すべて</button>
+    </div>
+    <div class="stats" id="stats">読み込み中...</div>
+  </div>
+
+  <div id="error-area"></div>
+
+  <div class="columns">
+    <div class="col">
+      <div class="col-head to">
+        <span>📩 To自分（要返信候補）</span>
+        <span class="count" id="count-to">-</span>
+      </div>
+      <div class="list" id="list-to"><div class="loading">読み込み中…</div></div>
+    </div>
+    <div class="col">
+      <div class="col-head cc">
+        <span>📋 CC自分（情報共有）</span>
+        <span class="count" id="count-cc">-</span>
+      </div>
+      <div class="list" id="list-cc"><div class="loading">読み込み中…</div></div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const SEARCH_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads";
+  const STORE_KEY = "mailDashFilter_v1";
+  const ACCOUNT = "nomura0913@gmail.com";
+
+  let currentFilter = localStorage.getItem(STORE_KEY) || "unread";
+  document.getElementById("filter-" + currentFilter).classList.add("active");
+  document.getElementById("filter-" + (currentFilter === "unread" ? "all" : "unread")).classList.remove("active");
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffH = (now - d) / 36e5;
+    if (diffH < 24) return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    if (diffH < 24 * 7) return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+    return d.toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" });
+  }
+
+  function senderName(s) {
+    if (!s) return "(不明)";
+    // "Name <email>" → "Name"
+    const m = s.match(/^"?([^"<]+?)"?\s*<.+>$/);
+    if (m) return m[1].trim();
+    // pure email → ローカル部
+    if (s.includes("@")) return s.split("@")[0];
+    return s;
+  }
+
+  function renderItems(threads, container) {
+    if (!threads || threads.length === 0) {
+      container.innerHTML = '<div class="empty">該当メールはありません 🎉</div>';
+      return;
+    }
+    const html = threads.map(t => {
+      const msgs = t.messages || [];
+      const last = msgs[msgs.length - 1] || {};
+      const threadCount = msgs.length;
+      const url = `https://mail.google.com/mail/u/0/#inbox/${t.id}`;
+      return `<div class="item" data-url="${url}">
+        <div class="row1">
+          <div class="sender">${escapeHtml(senderName(last.sender))}</div>
+          <div class="date">${escapeHtml(fmtDate(last.date))}</div>
+        </div>
+        <div class="subject">${threadCount > 1 ? `<span class="badge thread">${threadCount}</span>` : ""}${escapeHtml(last.subject || "(件名なし)")}</div>
+        <div class="snippet">${escapeHtml((last.snippet || "").slice(0, 200))}</div>
+      </div>`;
+    }).join("");
+    container.innerHTML = html;
+    container.querySelectorAll(".item").forEach(el => {
+      el.addEventListener("click", () => {
+        window.open(el.dataset.url, "_blank");
+      });
+    });
+  }
+
+  async function fetchSection(query, listEl, countEl) {
+    try {
+      const result = await window.cowork.callMcpTool(SEARCH_TOOL, { query, pageSize: 50 });
+      const data = typeof result === "string" ? JSON.parse(result) : result;
+      const threads = (data && data.threads) || [];
+      renderItems(threads, listEl);
+      countEl.textContent = threads.length + (data.nextPageToken ? "+" : "");
+      return threads.length;
+    } catch (e) {
+      listEl.innerHTML = `<div class="error">取得失敗: ${escapeHtml(e.message || e)}</div>`;
+      countEl.textContent = "!";
+      return 0;
+    }
+  }
+
+  async function refresh() {
+    const unreadFilter = currentFilter === "unread" ? " is:unread" : "";
+    document.getElementById("list-to").innerHTML = '<div class="loading">読み込み中…</div>';
+    document.getElementById("list-cc").innerHTML = '<div class="loading">読み込み中…</div>';
+    document.getElementById("stats").textContent = "読み込み中...";
+
+    const [toCount, ccCount] = await Promise.all([
+      fetchSection(`label:"📩 To自分"${unreadFilter}`, document.getElementById("list-to"), document.getElementById("count-to")),
+      fetchSection(`label:"📋 CC自分"${unreadFilter}`, document.getElementById("list-cc"), document.getElementById("count-cc")),
+    ]);
+
+    document.getElementById("stats").innerHTML = `<strong>To自分: ${toCount}</strong> 件　・　<strong>CC自分: ${ccCount}</strong> 件　${currentFilter === "unread" ? "(未読のみ)" : "(全件・最新50)"}`;
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    localStorage.setItem(STORE_KEY, f);
+    document.getElementById("filter-unread").classList.toggle("active", f === "unread");
+    document.getElementById("filter-all").classList.toggle("active", f === "all");
+    refresh();
+  }
+
+  document.getElementById("filter-unread").addEventListener("click", () => setFilter("unread"));
+  document.getElementById("filter-all").addEventListener("click", () => setFilter("all"));
+
+  refresh();
+})();
+</script>
+</body>
+</html>

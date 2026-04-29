@@ -1,0 +1,96 @@
+<!doctype html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Mail Triage Dashboard",
+  "schemaVersion": 1,
+  "description": "のむさん用：To自分/CC自分の未読メールを一覧表示するダッシュボード。Gmail検索で取得、クリックでGmailで開く",
+  "mcpTools": [
+    "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads"
+  ],
+  "mcpServerNames": [
+    "Gmail"
+  ]
+}
+</script>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>📬 メール仕分けダッシュボード（デバッグ）</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+    background: #fafafa; color: #222; margin: 0; padding: 16px;
+    font-size: 13px; line-height: 1.5;
+  }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  .box { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .box h2 { font-size: 13px; margin: 0 0 8px; color: #555; }
+  pre { background: #f5f5f5; padding: 10px; border-radius: 6px; overflow: auto; font-size: 11px; max-height: 300px; }
+  .ok { color: #059669; font-weight: 600; }
+  .ng { color: #dc2626; font-weight: 600; }
+  button { padding: 6px 12px; font-size: 13px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>📬 メール仕分けダッシュボード（デバッグモード）</h1>
+  <button id="refresh">🔄 再実行</button>
+  <div id="output"></div>
+
+<script>
+(function() {
+  const SEARCH_TOOL = "mcp__19563f62-bf66-428a-a54d-aa5a0c40fba3__search_threads";
+  const out = document.getElementById("output");
+
+  function log(title, data, isError) {
+    const box = document.createElement("div");
+    box.className = "box";
+    const h = document.createElement("h2");
+    h.innerHTML = (isError ? '<span class="ng">❌ ' : '<span class="ok">✓ ') + title + '</span>';
+    box.appendChild(h);
+    const pre = document.createElement("pre");
+    pre.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    box.appendChild(pre);
+    out.appendChild(box);
+  }
+
+  async function test(label, query) {
+    log("呼び出し開始: " + label, "query: " + query);
+    try {
+      const result = await window.cowork.callMcpTool(SEARCH_TOOL, { query: query, pageSize: 3 });
+      log("結果（生データ）: " + label, result);
+      log("typeof result", typeof result);
+      if (typeof result === "string") {
+        try {
+          const parsed = JSON.parse(result);
+          log("JSON.parse 後: " + label, parsed);
+          log("threads の中身", parsed.threads || "(threads キーなし)");
+        } catch (e) {
+          log("JSON.parse 失敗", e.message, true);
+        }
+      } else if (result && typeof result === "object") {
+        log("オブジェクトのキー一覧", Object.keys(result));
+        log("threads の中身", result.threads || "(threads キーなし)");
+      }
+    } catch (e) {
+      log("エラー: " + label, e.message + "\n\nstack:\n" + (e.stack || "(なし)"), true);
+    }
+  }
+
+  async function runAll() {
+    out.innerHTML = "";
+    log("実行環境チェック", {
+      windowCowork: typeof window.cowork,
+      callMcpTool: typeof (window.cowork && window.cowork.callMcpTool),
+      askClaude: typeof (window.cowork && window.cowork.askClaude),
+    });
+    await test("To自分・全件", "to:nomura@nrs1.jp");
+    await test("To自分・未読のみ", "to:nomura@nrs1.jp is:unread");
+  }
+
+  document.getElementById("refresh").addEventListener("click", runAll);
+  runAll();
+})();
+</script>
+</body>
+</html>
