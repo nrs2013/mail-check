@@ -518,6 +518,33 @@
   let hideAds = localStorage.getItem(HIDE_KEY) !== "0";
   let kindCache = {};
   try { kindCache = JSON.parse(localStorage.getItem(KIND_CACHE_KEY) || "{}"); } catch(e) {}
+  // 起動時クリーンアップ：non-ad で summary が空のキャッシュ行を捨てて再分類させる
+  // （過去にAI失敗時の null summary がキャッシュされて貼り付くことがある）
+  let _cleaned = 0;
+  Object.keys(kindCache).forEach(id => {
+    const c = kindCache[id];
+    if (c && c.kind && c.kind !== "ad" && (!c.summary || c.summary === "")) {
+      delete kindCache[id];
+      _cleaned++;
+    }
+  });
+  if (_cleaned > 0) {
+    localStorage.setItem(KIND_CACHE_KEY, JSON.stringify(kindCache));
+    console.log("[Mail-Check!] 起動時クリーンアップ：summary空のキャッシュを " + _cleaned + " 件削除");
+  }
+  // 起動時クリーンアップ2：fileLinksCache の空配列も削除して再取得を促す
+  let _cleanedLinks = 0;
+  Object.keys(fileLinksCache).forEach(id => {
+    const links = fileLinksCache[id];
+    if (Array.isArray(links) && links.length === 0) {
+      delete fileLinksCache[id];
+      _cleanedLinks++;
+    }
+  });
+  if (_cleanedLinks > 0) {
+    localStorage.setItem(FILE_LINKS_CACHE_KEY, JSON.stringify(fileLinksCache));
+    console.log("[Mail-Check!] fileLinksキャッシュクリーンアップ: " + _cleanedLinks + " 件削除");
+  }
 
   const state = {
     nomura: { threads: [], count: null },
@@ -924,7 +951,7 @@
       const data = parseResult(result);
       const messages = (data && data.messages) || [];
       const last = messages[messages.length - 1] || {};
-      let body = (last.body || last.snippet || "");
+      let body = (last.plaintextBody || last.body || last.snippet || "");
       body = String(body).replace(/<[^>]+>/g, "");
       return body;
     } catch (e) { return ""; }
@@ -1287,7 +1314,7 @@
           '<div class="msg-head"><span class="msg-from">' + escapeHtml(senderName(msg.sender)) + '</span> <span class="msg-email">&lt;' + escapeHtml(senderEmail(msg.sender)) + '&gt;</span><br><span class="msg-date">' + escapeHtml(fmtFullDate(msg.date)) + '</span></div>' +
           renderRecipients("To", msg.toRecipients) +
           renderRecipients("Cc", msg.ccRecipients) +
-          '<div class="msg-body">' + cleanBodyText(msg.body || msg.snippet || "") + '</div>' +
+          '<div class="msg-body">' + cleanBodyText(msg.plaintextBody || msg.body || msg.snippet || "") + '</div>' +
         '</div>';
       }).join("");
       document.getElementById("modal-body").innerHTML = html;
@@ -1299,7 +1326,7 @@
       const replySubj = /^re:/i.test(rawSubj) ? rawSubj : "Re: " + rawSubj;
       const fwdSubj = /^fwd?:/i.test(rawSubj) ? rawSubj : "Fwd: " + rawSubj;
       // 短い引用本文（mailto URL長すぎ問題回避）
-      const shortQuote = "\n\n--- " + senderName(lastMsg.sender) + " さんのメール ---\n" + ((lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 300));
+      const shortQuote = "\n\n--- " + senderName(lastMsg.sender) + " さんのメール ---\n" + ((lastMsg.plaintextBody || lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 300));
       // To/Ccから自分(ME)を除外したリストを作る → 全員返信用
       const extractEmail = (s) => {
         const m = String(s || "").match(/<([^>]+)>/);
@@ -1325,7 +1352,7 @@
       // 3. 転送（宛先空、件名 Fwd:、本文に元メール）
       const mailtoFwd = "mailto:"
         + "?subject=" + encodeURIComponent(fwdSubj)
-        + "&body=" + encodeURIComponent("\n\n--- 転送 ---\nFrom: " + senderName(lastMsg.sender) + " <" + senderAddr + ">\nSubject: " + rawSubj + "\n\n" + ((lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 600)));
+        + "&body=" + encodeURIComponent("\n\n--- 転送 ---\nFrom: " + senderName(lastMsg.sender) + " <" + senderAddr + ">\nSubject: " + rawSubj + "\n\n" + ((lastMsg.plaintextBody || lastMsg.body || lastMsg.snippet || "").replace(/<[^>]+>/g, "").slice(0, 600)));
 
       document.getElementById("mail-reply-sender").href = mailtoSender;
       document.getElementById("mail-reply-all").href = mailtoAll;
@@ -1637,14 +1664,16 @@
   }
 
   // 本文full取得して完全URLを抽出するバックグラウンド処理
-  // snippet段階で「dropbox」等のキーワードが見つかったメールだけ対象
+  // 野村宛は無条件で対象（snippet見切れ対策）、それ以外はsnippetにキーワードがある場合のみ
   async function loadFullFileLinks(threads) {
     const FILE_KEYWORDS = /dropbox|gigafile|wetransfer|drive\.google|docs\.google|firestorage|box\.com|we\.tl|db\.tt/i;
     const todo = threads.filter(t => {
       if (fileLinksCache[t.id] !== undefined) return false; // キャッシュ済
+      // 野村宛スレッドは snippet 見切れ対策で無条件チェック
+      if (startsWithNomura(t)) return true;
       const last = (t.messages || [])[(t.messages || []).length - 1] || {};
       return FILE_KEYWORDS.test(last.snippet || "");
-    }).slice(0, 15); // 最大15件/refresh
+    }).slice(0, 25); // 最大25件/refresh（野村宛優先で枠増やし）
     if (todo.length === 0) return;
 
     for (let i = 0; i < todo.length; i += 8) {
@@ -1657,7 +1686,10 @@
           const data = parseResult(result);
           const messages = (data && data.messages) || [];
           let combined = "";
-          messages.forEach(msg => { combined += " " + (msg.body || msg.snippet || ""); });
+          messages.forEach(msg => { combined += " " + (msg.plaintextBody || msg.body || msg.snippet || ""); });
+          // 長いURLが複数行に折り返されたケースを救済（plaintext本文のwrap対策）
+          let prev;
+          do { prev = combined; combined = combined.replace(/(https?:\/\/\S+)[\r\n]+(\S)/g, '$1$2'); } while (combined !== prev);
           // HTML エンティティ復号も軽くやる
           combined = combined.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
           fileLinksCache[t.id] = extractFileLinks(combined);
