@@ -79,6 +79,130 @@
   .stats { color: var(--text-3); font-size: 11px; margin-left: auto; font-feature-settings: "tnum"; }
   .stats strong { color: var(--text); font-weight: 600; }
 
+  /* === メインレイアウト：左に案件パネル＋右にメール一覧 === */
+  .main-layout {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .cases-panel {
+    flex: 0 0 280px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  .cases-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .cases-title {
+    font-size: 12px; font-weight: 700; color: var(--text-2);
+    letter-spacing: 0.06em;
+  }
+  .cases-add {
+    background: var(--accent); color: #1a1a1a;
+    border: 0; padding: 4px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .cases-add:hover { background: #e8a570; }
+  #cases-list { display: flex; flex-direction: column; gap: 10px; }
+  .cases-empty {
+    padding: 20px 12px; text-align: center;
+    color: var(--text-3); font-size: 11px; line-height: 1.6;
+  }
+  .case-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-left: 3px solid rgba(212, 146, 90, 0.5);
+    border-radius: 8px; padding: 10px 12px;
+    transition: border-color .15s, opacity .15s, transform .15s;
+    cursor: grab;
+    user-select: none;
+  }
+  .case-card:hover { border-color: var(--border-strong); border-left-color: var(--accent); }
+  .case-card:active { cursor: grabbing; }
+  .case-card.dragging { opacity: 0.4; cursor: grabbing; }
+  .case-card.drag-over-top { box-shadow: 0 -2px 0 0 var(--accent); }
+  .case-card.drag-over-bottom { box-shadow: 0 2px 0 0 var(--accent); }
+  .case-card .case-handle {
+    color: var(--text-3); margin-right: 4px; font-size: 11px;
+    letter-spacing: -1px;
+  }
+  .case-name {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    word-break: break-word;
+  }
+  .case-count {
+    font-size: 10px; color: var(--text-3); background: var(--bg-hover);
+    padding: 1px 7px; border-radius: 8px; font-weight: 500;
+    flex-shrink: 0;
+  }
+  .case-summary {
+    font-size: 12px; color: var(--text); line-height: 1.6;
+    word-break: break-word;
+  }
+  .case-summary.placeholder { color: var(--text-3); font-style: italic; }
+  .case-actions {
+    display: flex; gap: 4px; margin-top: 8px;
+  }
+  .case-actions button {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-3); padding: 2px 8px; border-radius: 4px;
+    font-size: 10px; cursor: pointer; font-family: inherit;
+    line-height: 1.4;
+  }
+  .case-actions .case-refresh {
+    color: var(--accent); border-color: rgba(212, 146, 90, 0.35);
+  }
+  .case-actions .case-refresh:hover {
+    background: rgba(212, 146, 90, 0.12); border-color: var(--accent);
+  }
+  .case-actions .case-delete:hover {
+    color: var(--reply); border-color: var(--reply);
+  }
+  .case-add-form {
+    display: none; padding: 10px; background: var(--bg);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .case-add-form.show { display: block; }
+  .case-add-form input {
+    width: 100%; padding: 7px 10px; background: var(--bg-elev);
+    border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; font-size: 12px; font-family: inherit;
+    margin-bottom: 8px; box-sizing: border-box;
+  }
+  .case-add-form input:focus { border-color: var(--accent); outline: none; }
+  .case-add-form .form-actions { display: flex; gap: 6px; }
+  .case-add-form .form-actions button {
+    flex: 1; padding: 5px 10px; border-radius: 5px;
+    font-size: 11px; cursor: pointer; font-family: inherit; font-weight: 500;
+    border: 1px solid var(--border);
+  }
+  .case-add-form .submit-btn {
+    background: var(--accent); color: #1a1a1a; border-color: var(--accent);
+  }
+  .case-add-form .submit-btn:hover { background: #e8a570; }
+  .case-add-form .cancel-btn {
+    background: transparent; color: var(--text-2);
+  }
+  .case-add-form .cancel-btn:hover { color: var(--text); }
+  .case-add-form .hint {
+    font-size: 10px; color: var(--text-3); margin-top: 0; margin-bottom: 6px; line-height: 1.5;
+  }
+  @media (max-width: 1100px) {
+    .main-layout { flex-direction: column; }
+    .cases-panel { flex: none; max-height: none; position: static; width: 100%; }
+  }
+
   /* === 日付揃えグリッド === */
   .grid {
     display: grid;
@@ -86,6 +210,7 @@
     gap: 0;
     background: var(--bg-elev); border: 1px solid var(--border);
     border-radius: 12px; overflow: hidden;
+    flex: 1; min-width: 0;
   }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
@@ -280,6 +405,84 @@
   .name-edit-popover .cancel-btn { background: transparent; color: var(--text-2); }
   .name-edit-popover .reset-btn { background: transparent; color: var(--text-3); margin-left: auto; font-size: 11px; }
 
+  /* ブロック機能：🚫ボタン（編集ボタンと同じくホバー時のみ表示） */
+  .block-btn {
+    display: inline-block; opacity: 0; transition: opacity .12s, color .12s;
+    margin-left: 2px; padding: 0 4px; font-size: 11px; color: var(--text-3);
+    background: transparent; border: 0; cursor: pointer; line-height: 1;
+  }
+  .item:hover .block-btn { opacity: 0.5; }
+  .block-btn:hover { opacity: 1 !important; color: #d97766; }
+
+  /* ブロック確認ポップオーバー */
+  .block-confirm-popover {
+    position: fixed; background: var(--bg-elev); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 200; min-width: 240px;
+  }
+  .block-confirm-popover .label { font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+  .block-confirm-popover .domain {
+    font-size: 12px; color: var(--text); margin-bottom: 4px; padding: 4px 8px;
+    background: var(--bg); border-radius: 5px; font-family: monospace;
+    word-break: break-all;
+  }
+  .block-confirm-popover .desc { font-size: 11px; color: var(--text-2); margin-bottom: 10px; line-height: 1.5; }
+  .block-confirm-popover .actions { display: flex; gap: 6px; }
+  .block-confirm-popover .actions button {
+    padding: 6px 12px; border-radius: 5px; font-size: 12px; cursor: pointer;
+    font-family: inherit; font-weight: 500; border: 1px solid var(--border);
+  }
+  .block-confirm-popover .confirm-btn { background: #d97766; color: #1a1a1a; border-color: #d97766; }
+  .block-confirm-popover .confirm-btn:hover { background: #c66454; }
+  .block-confirm-popover .cancel-btn { background: transparent; color: var(--text-2); }
+
+  /* ブロック中ピル */
+  .blocked-pill {
+    background: transparent; color: var(--text-3); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
+    font-family: inherit; transition: all .12s; margin-left: 6px;
+    font-feature-settings: "tnum";
+  }
+  .blocked-pill:hover { background: var(--bg-hover); color: var(--text-2); border-color: var(--border-strong); }
+  .blocked-pill.empty { opacity: 0.4; cursor: default; }
+  .blocked-pill.empty:hover { background: transparent; color: var(--text-3); border-color: var(--border); }
+
+  /* ブロックリスト管理ポップオーバー */
+  .blocked-list-popover {
+    position: fixed; background: var(--bg-elev); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 200; min-width: 320px; max-width: 420px; max-height: 70vh; overflow-y: auto;
+  }
+  .blocked-list-popover .head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px;
+  }
+  .blocked-list-popover .head .title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .blocked-list-popover .head .close {
+    background: transparent; border: 0; color: var(--text-3); cursor: pointer;
+    font-size: 18px; line-height: 1; padding: 0 4px;
+  }
+  .blocked-list-popover .head .close:hover { color: var(--text); }
+  .blocked-list-popover .empty-msg {
+    padding: 20px 8px; text-align: center; color: var(--text-3); font-size: 12px;
+  }
+  .blocked-list-popover .domain-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .blocked-list-popover .domain-row:last-child { border-bottom: 0; }
+  .blocked-list-popover .domain-row .domain-text {
+    font-family: monospace; font-size: 12px; color: var(--text);
+    word-break: break-all; flex: 1; min-width: 0;
+  }
+  .blocked-list-popover .unblock-btn {
+    background: transparent; color: var(--text-2); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer;
+    font-family: inherit; flex-shrink: 0; transition: all .12s;
+  }
+  .blocked-list-popover .unblock-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-strong); }
+
   .empty, .loading-text {
     padding: 32px 20px; text-align: center; color: var(--text-3); font-size: 12px;
   }
@@ -415,9 +618,29 @@
       <input type="checkbox" id="hide-ads" checked />
       <span>広告を隠す</span>
     </label>
+    <button class="blocked-pill empty" id="blocked-pill" title="ブロック中の送信ドメイン一覧を開く">ブロック中: 0件</button>
     <div class="stats" id="stats">読み込み中…</div>
   </div>
 
+  <div class="main-layout">
+  <aside class="cases-panel">
+    <div class="cases-header">
+      <span class="cases-title">📋 PIC UP!</span>
+      <div style="display:flex;gap:6px;">
+        <button id="refresh-all-cases-btn" class="cases-add" style="background:transparent;color:var(--text-2);border:1px solid var(--border);" title="全案件の要約をAIで再生成">⟳ 全更新</button>
+        <button id="add-case-btn" class="cases-add">+ 追加</button>
+      </div>
+    </div>
+    <div class="case-add-form" id="case-add-form">
+      <div class="hint">案件キーワードを入力（件名や本文にこの単語を含むメールを集めます）<br>例：DXTEEN、東山奈央、櫻坂14th</div>
+      <input type="text" id="case-name-input" placeholder="案件名を入力..." />
+      <div class="form-actions">
+        <button class="submit-btn" id="case-submit-btn">追加</button>
+        <button class="cancel-btn" id="case-cancel-btn">キャンセル</button>
+      </div>
+    </div>
+    <div id="cases-list"></div>
+  </aside>
   <div class="grid" id="mail-grid">
     <div class="col-head priority">
       <div class="col-title">
@@ -461,6 +684,7 @@
     </div>
     <div class="loading-text" style="grid-column: 1/-1; padding: 40px;">読み込み中…</div>
   </div>
+  </div><!-- /.main-layout -->
 
   <div class="modal-bg" id="modal-bg">
     <div class="modal">
@@ -490,6 +714,38 @@
   const HIDE_KEY = "mailDashHideAds_v5";
   const KIND_CACHE_KEY = "mailDashKindCache_v16";
   const SENDER_NAME_KEY = "mailDashSenderNames_v1";
+  const BLOCKED_DOMAINS_KEY = "mailDashBlockedDomains_v1";
+
+  // ブロック済みドメイン (Set)
+  let blockedDomains = new Set();
+  try {
+    const arr = JSON.parse(localStorage.getItem(BLOCKED_DOMAINS_KEY) || "[]");
+    if (Array.isArray(arr)) blockedDomains = new Set(arr.map(d => String(d).toLowerCase()));
+  } catch(e) {}
+  function saveBlockedDomains() {
+    localStorage.setItem(BLOCKED_DOMAINS_KEY, JSON.stringify(Array.from(blockedDomains)));
+  }
+  function blockDomainAdd(domain) {
+    if (!domain) return;
+    blockedDomains.add(String(domain).toLowerCase());
+    saveBlockedDomains();
+  }
+  function blockDomainRemove(domain) {
+    if (!domain) return;
+    blockedDomains.delete(String(domain).toLowerCase());
+    saveBlockedDomains();
+  }
+  function isThreadBlocked(thread) {
+    if (blockedDomains.size === 0) return false;
+    const last = (thread.messages || []).slice(-1)[0] || (thread.messages || [])[0];
+    if (!last) return false;
+    const sender = (last.sender || "").toLowerCase();
+    const m = sender.match(/<([^>]+)>/);
+    const email = m ? m[1].toLowerCase() : sender;
+    const at = email.lastIndexOf("@");
+    const domain = at >= 0 ? email.slice(at + 1) : "";
+    return blockedDomains.has(domain);
+  }
   let senderNameMap = {};
   try { senderNameMap = JSON.parse(localStorage.getItem(SENDER_NAME_KEY) || "{}"); } catch(e) {}
 
@@ -1566,6 +1822,17 @@
   // 日付揃えグリッド：4カラム（野村宛・NRSから・To・Cc）を同じ日付ヘッダーで横一線
   // 優先度: 野村宛 > NRSから > To > Cc （重複は左優先）
   function renderColumns() {
+    // ブロック済みドメインを除外（state.to/cc/nomura/nrs から抜く）
+    if (blockedDomains.size > 0) {
+      ["to", "cc", "nomura", "nrs"].forEach(k => {
+        if (state[k] && Array.isArray(state[k].threads)) {
+          state[k].threads = state[k].threads.filter(t => !isThreadBlocked(t));
+        }
+      });
+    }
+    // ブロック中ピル更新
+    updateBlockedPill();
+
     // 野村宛 を to+cc から抽出
     const nomuraMap = new Map();
     (state.to.threads || []).forEach(t => { if (startsWithNomura(t)) nomuraMap.set(t.id, t); });
@@ -1676,6 +1943,7 @@
       const idx = parseInt(el.dataset.threadIdx, 10);
       el.addEventListener("click", (e) => {
         if (e.target.classList.contains("edit-name-btn")) return;
+        if (e.target.classList.contains("block-btn")) return;
         openThread(allThreads[idx]);
       });
     });
@@ -1684,6 +1952,13 @@
         e.stopPropagation();
         e.preventDefault();
         openNameEditPopover(btn.dataset.email, btn);
+      });
+    });
+    grid.querySelectorAll(".block-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openBlockConfirmPopover(btn.dataset.domain, btn);
       });
     });
 
@@ -1870,6 +2145,7 @@
           '<span class="dot ' + kind + '"></span>' +
           '<span class="sender">' + escapeHtml(displayNameOf(t)) + '</span>' +
           '<button class="edit-name-btn" data-email="' + escapeHtml(senderEmailStr) + '" title="送信者名を編集">✎</button>' +
+          '<button class="block-btn" data-domain="' + escapeHtml(senderDomain(last.sender)) + '" title="このドメインを今後表示しない">🚫</button>' +
           (threadCount > 1 ? '<span class="badge">' + threadCount + '</span>' : '') +
           attIcon +
         '</div>' +
@@ -1939,6 +2215,7 @@
     document.getElementById("stats").innerHTML =
       '★野村宛 <strong>' + nomuraCount + '</strong> · 要返信 <strong>' + nomuraReply + '</strong>　/　' +
       'NRS <strong>' + nrsCount + '</strong>';
+
   }
 
   function setFilter(f) {
@@ -1956,6 +2233,382 @@
     localStorage.setItem(HIDE_KEY, hideAds ? "1" : "0");
     renderColumns();
   });
+
+  // ===== ブロック機能 UI =====
+  function updateBlockedPill() {
+    const pill = document.getElementById("blocked-pill");
+    if (!pill) return;
+    const n = blockedDomains.size;
+    pill.textContent = "ブロック中: " + n + "件";
+    pill.classList.toggle("empty", n === 0);
+  }
+  updateBlockedPill();
+
+  function closeAllBlockPopovers() {
+    document.querySelectorAll(".block-confirm-popover, .blocked-list-popover").forEach(el => el.remove());
+  }
+
+  function openBlockConfirmPopover(domain, anchorBtn) {
+    closeAllBlockPopovers();
+    if (!domain) return;
+    const pop = document.createElement("div");
+    pop.className = "block-confirm-popover";
+    pop.innerHTML =
+      '<div class="label">このドメイン全体をブロック</div>' +
+      '<div class="domain">@' + escapeHtml(domain) + '</div>' +
+      '<div class="desc">今後このダッシュボードに表示されなくなります。Gmail本体には影響しません。</div>' +
+      '<div class="actions">' +
+        '<button class="confirm-btn" type="button">ブロック</button>' +
+        '<button class="cancel-btn" type="button">キャンセル</button>' +
+      '</div>';
+    document.body.appendChild(pop);
+    // 位置調整
+    const r = anchorBtn.getBoundingClientRect();
+    let top = r.bottom + 6;
+    let left = r.left;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    if (top + ph > window.innerHeight - 10) top = r.top - ph - 6;
+    pop.style.top = Math.max(10, top) + "px";
+    pop.style.left = Math.max(10, left) + "px";
+
+    pop.querySelector(".confirm-btn").addEventListener("click", () => {
+      blockDomainAdd(domain);
+      closeAllBlockPopovers();
+      renderColumns();
+    });
+    pop.querySelector(".cancel-btn").addEventListener("click", closeAllBlockPopovers);
+
+    setTimeout(() => {
+      const onDocClick = (e) => {
+        if (!pop.contains(e.target)) {
+          closeAllBlockPopovers();
+          document.removeEventListener("click", onDocClick, true);
+        }
+      };
+      document.addEventListener("click", onDocClick, true);
+    }, 0);
+  }
+
+  function openBlockedListPopover(anchorBtn) {
+    closeAllBlockPopovers();
+    const pop = document.createElement("div");
+    pop.className = "blocked-list-popover";
+    const list = Array.from(blockedDomains).sort();
+    let bodyHtml;
+    if (list.length === 0) {
+      bodyHtml = '<div class="empty-msg">ブロック中のドメインはありません</div>';
+    } else {
+      bodyHtml = list.map(d =>
+        '<div class="domain-row">' +
+          '<span class="domain-text">@' + escapeHtml(d) + '</span>' +
+          '<button class="unblock-btn" type="button" data-domain="' + escapeHtml(d) + '">解除</button>' +
+        '</div>'
+      ).join("");
+    }
+    pop.innerHTML =
+      '<div class="head">' +
+        '<span class="title">ブロック中ドメイン (' + list.length + ')</span>' +
+        '<button class="close" type="button" title="閉じる">×</button>' +
+      '</div>' +
+      '<div class="body">' + bodyHtml + '</div>';
+    document.body.appendChild(pop);
+    // 位置：ピル下に配置
+    const r = anchorBtn.getBoundingClientRect();
+    let top = r.bottom + 8;
+    let left = r.left;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    if (top + ph > window.innerHeight - 10) top = Math.max(10, window.innerHeight - ph - 10);
+    pop.style.top = top + "px";
+    pop.style.left = Math.max(10, left) + "px";
+
+    pop.querySelector(".close").addEventListener("click", closeAllBlockPopovers);
+    pop.querySelectorAll(".unblock-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const d = btn.dataset.domain;
+        blockDomainRemove(d);
+        // ダッシュボードに復活させるため再フェッチが必要 → refreshする
+        renderColumns();
+        // 再描画して件数も更新（一覧そのものを開き直し）
+        openBlockedListPopover(anchorBtn);
+        // 復活したメールを表示するには再取得が必要なのでrefresh
+        refresh();
+      });
+    });
+
+    setTimeout(() => {
+      const onDocClick = (e) => {
+        if (!pop.contains(e.target) && e.target !== anchorBtn) {
+          closeAllBlockPopovers();
+          document.removeEventListener("click", onDocClick, true);
+        }
+      };
+      document.addEventListener("click", onDocClick, true);
+    }, 0);
+  }
+
+  document.getElementById("blocked-pill").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openBlockedListPopover(e.currentTarget);
+  });
+
+  // ===== 案件サマリー機能 =====
+  const CASES_KEY = "mailDashCases_v1";
+  let cases = [];
+  try { cases = JSON.parse(localStorage.getItem(CASES_KEY) || "[]"); } catch(e) {}
+  function saveCases() {
+    try { localStorage.setItem(CASES_KEY, JSON.stringify(cases)); } catch(e) {}
+  }
+
+  function showAddCaseForm() {
+    document.getElementById("case-add-form").classList.add("show");
+    const inp = document.getElementById("case-name-input");
+    inp.value = "";
+    inp.focus();
+  }
+  function hideAddCaseForm() {
+    document.getElementById("case-add-form").classList.remove("show");
+    document.getElementById("case-name-input").value = "";
+  }
+  function submitAddCase() {
+    const inp = document.getElementById("case-name-input");
+    const name = (inp.value || "").trim();
+    if (!name) { inp.focus(); return; }
+    const newCase = {
+      id: String(Date.now()),
+      name: name,
+      summary: null,
+      count: 0,
+      lastUpdate: 0
+    };
+    cases.push(newCase);
+    saveCases();
+    hideAddCaseForm();
+    // ユーザー操作の継続性を保つため、renderCases() の前に summarizeCase を呼ぶ
+    // summarizeCase 内で askClaude を await し、終わってからその場のDOMだけ更新する
+    summarizeCase(newCase);
+    renderCases();
+  }
+
+  function deleteCase(id) {
+    const c = cases.find(x => x.id === id);
+    if (!c) return;
+    // confirmはサンドボックスでブロックされるのでカード内で2段階削除
+    cases = cases.filter(x => x.id !== id);
+    saveCases();
+    renderCases();
+  }
+
+  function findRelatedThreads(caseName) {
+    const allThreads = [
+      ...(state.to.threads || []),
+      ...(state.cc.threads || [])
+    ];
+    const seen = new Set();
+    const result = [];
+    const lc = caseName.toLowerCase();
+    for (const t of allThreads) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      const msgs = t.messages || [];
+      const matches = msgs.some(m => {
+        const subj = (m.subject || "").toLowerCase();
+        const body = (m.plaintextBody || m.snippet || "").toLowerCase();
+        return subj.includes(lc) || body.includes(lc);
+      });
+      if (matches) result.push(t);
+    }
+    result.sort((a, b) => {
+      const da = lastMessageOf(a).date || "";
+      const db = lastMessageOf(b).date || "";
+      return String(db).localeCompare(String(da));
+    });
+    return result;
+  }
+
+  // クリック直後のユーザー操作タイミングを温存するため、DOM書き換えはせず
+  // 既存カード内のテキストだけ更新する
+  function updateCaseCardInline(c) {
+    const card = document.querySelector('.case-card[data-id="' + c.id + '"]');
+    if (!card) return;
+    const summary = c.summary || "要約まだ";
+    const isPlaceholder = !c.summary || c.summary === "要約取得中…" || c.summary === "要約まだ";
+    const sumEl = card.querySelector(".case-summary");
+    if (sumEl) {
+      sumEl.textContent = summary;
+      sumEl.classList.toggle("placeholder", isPlaceholder);
+    }
+    const countEl = card.querySelector(".case-count");
+    if (countEl) countEl.textContent = String(c.count || 0);
+  }
+
+  async function summarizeCase(c) {
+    // 必要なデータを「askClaude呼び出しより前」に全部そろえてしまう
+    const threads = findRelatedThreads(c.name);
+    c.count = threads.length;
+
+    if (threads.length === 0) {
+      c.summary = "（このダッシュボードに表示されてる範囲には関連メールなし）";
+      saveCases();
+      updateCaseCardInline(c);
+      return;
+    }
+
+    const items = threads.slice(0, 10).map((t, i) => {
+      const last = lastMessageOf(t);
+      return {
+        idx: i,
+        from: last.sender || "",
+        subject: last.subject || "",
+        snippet: (last.plaintextBody || last.snippet || "").slice(0, 400)
+      };
+    });
+
+    // ここで初めて表示更新（DOM書き換えではなく中身だけ）
+    c.summary = "要約取得中…";
+    updateCaseCardInline(c);
+
+    const promptText = "あなたはコンサート演出家のメール仕分けアシスタントです。進行中の案件「" + c.name + "」について、添付されたメール群から現状を要約してください。\n\n要件：\n- 日本語200〜300字\n- 「最新の動き」「決定事項」「未解決の懸念」「次のアクション」が分かるように\n- 固有名詞・日付・数字は具体的に\n- 古い情報より新しい情報を優先\n- 説明文や前置き不要、要約本文のみを返答\n- マークダウン記号やJSON記号は使わない、プレーンテキストのみ";
+
+    try {
+      const result = await window.cowork.askClaude(promptText, items);
+      let text = result;
+      if (typeof result === "object") {
+        if (result.content && Array.isArray(result.content)) {
+          const tt = result.content.find(x => x.type === "text");
+          text = tt ? tt.text : JSON.stringify(result);
+        } else if (result.text) text = result.text;
+        else text = JSON.stringify(result);
+      }
+      let cleaned = String(text).trim();
+      // markdown code fence を剥がす
+      cleaned = cleaned.replace(/^```[a-z]*\s*/i, "").replace(/\s*```\s*$/, "").trim();
+      // JSON でラップされていた場合は中の summary を抽出（保険）
+      if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+        try {
+          const j = JSON.parse(cleaned);
+          if (j && typeof j.summary === "string") cleaned = j.summary.trim();
+        } catch(_){}
+      }
+      // それでも JSON 風の場合、summary フィールドだけ抜く
+      const sm = cleaned.match(/"summary"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
+      if (sm && sm[1].trim()) {
+        cleaned = sm[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\').trim();
+      }
+
+      if (cleaned.length >= 30) {
+        c.summary = cleaned.slice(0, 800);
+      } else {
+        c.summary = "要約結果が短すぎます：" + cleaned;
+      }
+    } catch (e) {
+      c.summary = "要約失敗：" + (e.message || e);
+    }
+    c.lastUpdate = Date.now();
+    saveCases();
+    updateCaseCardInline(c);
+  }
+
+  async function refreshAllCases() {
+    if (cases.length === 0) return;
+    // 並列発火が必須：user click の瞬間に全件分の askClaude を同時に起動しないと、
+    // 1件目の await 中に user activation が切れて2件目以降が弾かれる
+    await Promise.all(cases.map(c => summarizeCase(c)));
+  }
+
+  let _dragSrcIdx = null;
+  function renderCases() {
+    const list = document.getElementById("cases-list");
+    if (!list) return;
+    if (cases.length === 0) {
+      list.innerHTML = '<div class="cases-empty">「+ 追加」で案件を登録すると、関連メールの要点をAIが要約します</div>';
+      return;
+    }
+    list.innerHTML = cases.map((c, idx) => {
+      const summary = c.summary || "要約まだ";
+      const isPlaceholder = !c.summary || c.summary === "要約取得中…" || c.summary === "要約まだ";
+      return '<div class="case-card" draggable="true" data-idx="' + idx + '" data-id="' + escapeHtml(c.id) + '" title="ドラッグで並び替え">' +
+        '<div class="case-name"><span class="case-handle">⋮⋮</span>' + escapeHtml(c.name) + ' <span class="case-count">' + (c.count || 0) + '</span></div>' +
+        '<div class="case-summary' + (isPlaceholder ? ' placeholder' : '') + '">' + escapeHtml(summary) + '</div>' +
+        '<div class="case-actions">' +
+          '<button class="case-refresh" data-id="' + escapeHtml(c.id) + '" title="この案件だけ更新">⟳ 更新</button>' +
+          '<button class="case-delete" data-id="' + escapeHtml(c.id) + '" title="削除">×</button>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+    list.querySelectorAll(".case-refresh").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = e.currentTarget.dataset.id;
+        const c = cases.find(x => x.id === id);
+        if (c) summarizeCase(c);
+      });
+    });
+    list.querySelectorAll(".case-delete").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteCase(e.currentTarget.dataset.id);
+      });
+    });
+    // ドラッグ&ドロップで並び替え
+    list.querySelectorAll(".case-card").forEach(card => {
+      card.addEventListener("dragstart", (e) => {
+        _dragSrcIdx = parseInt(card.dataset.idx, 10);
+        card.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", String(_dragSrcIdx)); } catch(_){}
+      });
+      card.addEventListener("dragend", () => {
+        card.classList.remove("dragging");
+        list.querySelectorAll(".case-card").forEach(c => {
+          c.classList.remove("drag-over-top", "drag-over-bottom");
+        });
+        _dragSrcIdx = null;
+      });
+      card.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (_dragSrcIdx === null) return;
+        const tIdx = parseInt(card.dataset.idx, 10);
+        if (tIdx === _dragSrcIdx) return;
+        const r = card.getBoundingClientRect();
+        const isTopHalf = (e.clientY - r.top) < r.height / 2;
+        list.querySelectorAll(".case-card").forEach(c => c.classList.remove("drag-over-top", "drag-over-bottom"));
+        card.classList.add(isTopHalf ? "drag-over-top" : "drag-over-bottom");
+        e.dataTransfer.dropEffect = "move";
+      });
+      card.addEventListener("dragleave", () => {
+        card.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+      card.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (_dragSrcIdx === null) return;
+        const tIdx = parseInt(card.dataset.idx, 10);
+        if (tIdx === _dragSrcIdx) return;
+        const r = card.getBoundingClientRect();
+        const isTopHalf = (e.clientY - r.top) < r.height / 2;
+        const insertAt = isTopHalf ? tIdx : tIdx + 1;
+        const moved = cases.splice(_dragSrcIdx, 1)[0];
+        // splice後にindexがずれることに注意
+        const adj = (_dragSrcIdx < insertAt) ? insertAt - 1 : insertAt;
+        cases.splice(adj, 0, moved);
+        saveCases();
+        renderCases();
+      });
+    });
+  }
+
+  document.getElementById("add-case-btn").addEventListener("click", showAddCaseForm);
+  document.getElementById("refresh-all-cases-btn").addEventListener("click", () => {
+    refreshAllCases().catch(()=>{});
+  });
+  document.getElementById("case-submit-btn").addEventListener("click", submitAddCase);
+  document.getElementById("case-cancel-btn").addEventListener("click", hideAddCaseForm);
+  document.getElementById("case-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitAddCase();
+    else if (e.key === "Escape") hideAddCaseForm();
+  });
+  renderCases();
 
   refresh();
 })();
